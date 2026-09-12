@@ -1,0 +1,48 @@
+# Backend na 192.168.1.11:2363 (tunel Cloudflare -> yeapi.wpme.pl)
+# + Redis (hot cache) + Meilisearch (wyszukiwarka świadczeń z literówkami/synonimami)
+services:
+  backend:
+    build: .
+    container_name: zdrowapolska-backend
+    ports:
+      - "2363:2363"
+    env_file:
+      - .env
+    environment:
+      PORT: 2363
+      REDIS_URL: redis://redis:6379
+      MEILI_URL: http://meilisearch:7700
+      DB_PATH: /app/data/zdrowapolska.sqlite
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - redis
+      - meilisearch
+    restart: unless-stopped
+
+  redis:
+    image: redis:8-alpine
+    container_name: zdrowapolska-redis
+    command: ["redis-server", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+  meilisearch:
+    image: getmeili/meilisearch:v1.53
+    container_name: zdrowapolska-meilisearch
+    environment:
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-zdrowapolska-meili-key}
+      MEILI_NO_ANALYTICS: "true"
+    volumes:
+      - meilidata:/meili_data
+    restart: unless-stopped
+
+volumes:
+  redisdata:
+  meilidata:

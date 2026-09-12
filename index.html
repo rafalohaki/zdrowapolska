@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="UTF-8" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23059669'/%3E%3Cpath d='M6 17h5l2.5-6 4 10 2.5-6H26' stroke='white' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icon.svg" />
+    <meta property="og:title" content="ZdrowaPolska — najkrótsza kolejka do specjalisty" />
+    <meta property="og:description" content="Porównujemy oficjalne czasy oczekiwania NFZ w 16 województwach. Apteki, SOR-y, nocna pomoc i doradca AI." />
+    <meta property="og:type" content="website" />
+    <meta name="theme-color" content="#059669" />
+    <meta
+      name="description"
+      content="ZdrowaPolska — porównywarka czasów oczekiwania do lekarzy specjalistów na NFZ. Sprawdź, gdzie dostaniesz się na wizytę najszybciej."
+    />
+    <title>ZdrowaPolska — najkrótsza kolejka do specjalisty</title>
+    <script>
+      // motyw przed pierwszym renderem (bez mignięcia jasnym)
+      try {
+        const t = localStorage.getItem('zp_theme');
+        if (t === 'dark' || (!t && matchMedia('(prefers-color-scheme: dark)').matches)) {
+          document.documentElement.classList.add('dark');
+        }
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

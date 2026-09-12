@@ -1,0 +1,40 @@
+{
+  "name": "zdrowapolska",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run dev:backend & bun run dev:frontend",
+    "dev:backend": "bun --hot server/index.ts",
+    "dev:frontend": "bunx vite",
+    "build": "vite build",
+    "start": "bun server/index.ts",
+    "test": "bun test ./test/",
+    "test:e2e": "bunx playwright test",
+    "typecheck": "tsc --noEmit",
+    "deploy": "vite build && bunx wrangler deploy",
+    "docker:build": "docker compose build",
+    "docker:up": "docker compose up -d --build",
+    "docker:logs": "docker compose logs -f"
+  },
+  "dependencies": {
+    "effect": "^4.0.0-rc.112",
+    "hono": "^4.13.7",
+    "leaflet": "^1.9.4",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/bun": "^1.4.1",
+    "@types/leaflet": "^1.9.22",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2",
+    "wrangler": "^4.129.1"
+  }
+}

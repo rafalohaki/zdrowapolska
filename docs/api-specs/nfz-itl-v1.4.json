@@ -1,0 +1,2105 @@
+{
+  "openapi": "3.0.4",
+  "info": {
+    "title": "API Terminy Leczenia",
+    "version": "v1.4"
+  },
+  "servers": [
+    {
+      "url": "https://apinfz.nfz.gov.pl/app-itl-api-pcus/"
+    }
+  ],
+  "paths": {
+    "/places": {
+      "get": {
+        "tags": [
+          "Dictionaries"
+        ],
+        "summary": "",
+        "description": "Zasób zwraca nazwy miejsc udzielania świadczeń zdrowotnych wybranych z bazy danych z nazwami miejsc, które zawierają pozycje dostarczane przez podmioty świadczące opiekę zdrowotną. Lista miejsc jest wynikiem wyszukiwania według przekazanych parametrów.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "description": "Nazwa miejsca udzielania świadczeń (maks. 250 znaków)",
+            "schema": {
+              "maxLength": 250,
+              "type": "string"
+            }
+          },
+          {
+            "name": "province",
+            "in": "query",
+            "description": "Kod województwa\n\nDostępne wartości:\n\n01 – dolnośląskie\n\n02 – kujawsko-pomorskie\n\n03 – lubelskie\n\n04 – lubuskie\n\n05 – łódzkie\n\n06 – małopolskie\n\n07 – mazowieckie\n\n08 – opolskie\n\n09 – podkarpackie\n\n10 – podlaskie\n\n11 – pomorskie\n\n12 – śląskie\n\n13 – świętokrzyskie\n\n14 – warmińsko-mazurskie\n\n15 – wielkopolskie\n\n16 – zachodniopomorskie\n",
+            "schema": {
+              "maxLength": 2,
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Określa aktualnie wyświetlaną stronę.",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Określa liczbę pozycji wyświetlanych na stronie (maks. 25)",
+            "schema": {
+              "maximum": 25,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32",
+              "default": 10
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "description": "Określa format odpowiedzi.\n            json — JavaScript object notation (default)\n            xml — Extensible markup language",
+            "schema": {
+              "type": "string",
+              "default": "json"
+            }
+          },
+          {
+            "name": "api-version",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista nazw miejsc udzielania świadczeń",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/places-response"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/places-response"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/places-response"
+                }
+              },
+              "application/xml": {
+                "schema": {
+                  "$ref": "#/components/schemas/places-response"
+                }
+              },
+              "text/xml": {
+                "schema": {
+                  "$ref": "#/components/schemas/places-response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              },
+              "application/xml": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              },
+              "text/xml": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/localities": {
+      "get": {
+        "tags": [
+          "Dictionaries"
+        ],
+        "summary": "",
+        "description": "Zasób zwraca nazwy miejscowości miejsc udzielania świadczeń zdrowotnych wybranych z bazy danych z nazwami miejsc, które zawierają pozycje dostarczane przez podmioty świadczące opiekę zdrowotną. Lista miejsc jest wynikiem wyszukiwania według przekazanych parametrów.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "description": "Nazwa miejscowości miejsca udzielania świadczeń (maks. 250 znaków)",
+            "schema": {
+              "maxLength": 250,
+              "type": "string"
+            }
+          },
+          {
+            "name": "province",
+            "in": "query",
+            "description": "Kod województwa\n\nDostępne wartości:\n\n01 – dolnośląskie\n\n02 – kujawsko-pomorskie\n\n03 – lubelskie\n\n04 – lubuskie\n\n05 – łódzkie\n\n06 – małopolskie\n\n07 – mazowieckie\n\n08 – opolskie\n\n09 – podkarpackie\n\n10 – podlaskie\n\n11 – pomorskie\n\n12 – śląskie\n\n13 – świętokrzyskie\n\n14 – warmińsko-mazurskie\n\n15 – wielkopolskie\n\n16 – zachodniopomorskie\n",
+            "schema": {
+              "maxLength": 2,
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Określa aktualnie wyświetlaną stronę.",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Określa liczbę pozycji wyświetlanych na stronie (maks. 25)",
+            "schema": {
+              "maximum": 25,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32",
+              "default": 10
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "description": "Określa format odpowiedzi.\n            json — JavaScript object notation (default)\n            xml — Extensible markup language",
+            "schema": {
+              "type": "string",
+              "default": "json"
+            }
+          },
+          {
+            "name": "api-version",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista nazw meijscowości miejsc udzielania świadczeń",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/localities-response"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/localities-response"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/localities-response"
+                }
+              },
+              "application/xml": {
+                "schema": {
+                  "$ref": "#/components/schemas/localities-response"
+                }
+              },
+              "text/xml": {
+                "schema": {
+                  "$ref": "#/components/schemas/localities-response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              },
+              "application/xml": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              },
+              "text/xml": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/benefits": {
+      "get": {
+        "tags": [
+          "Dictionaries"
+        ],
+        "summary": "",
+        "description": "Zasób zwraca nazwy świadczeń zdrowotnych wybranych z bazy danych z nazwami świadczeń zdefiniowanych przez NFZ. Lista świadczeń jest wynikiem wyszukiwania według przekazanych parametrów.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "description": "Nazwa świadczenia (maks. 250 znaków)",
+            "schema": {
+              "maxLength": 250,
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Określa aktualnie wyświetlaną stronę.",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Określa liczbę pozycji wyświetlanych na stronie (maks. 25)",
+            "schema": {
+              "maximum": 25,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32",
+              "default": 10
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "description": "Określa format odpowiedzi.\n            json — JavaScript object notation (default)\n            xml — Extensible markup language",
+            "schema": {
+              "type": "string",
+              "default": "json"
+            }
+          },
+          {
+            "name": "api-version",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista nazw miejsc udzielania świadczeń",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/benefits-response"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/benefits-response"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/benefits-response"
+                }
+              },
+              "application/xml": {
+                "schema": {
+                  "$ref": "#/components/schemas/benefits-response"
+                }
+              },
+              "text/xml": {
+                "schema": {
+                  "$ref": "#/components/schemas/benefits-response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              },
+              "application/xml": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              },
+              "text/xml": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/providers": {
+      "get": {
+        "tags": [
+          "Dictionaries"
+        ],
+        "summary": "",
+        "description": "Zasób zwraca nazwy świadczeniodawców wybranych z bazy danych z nazwami świadczeniodawców, która zawiera wszystkie podmioty zobligowane do raportowania danych dotyczących terminów leczenia. Lista świadczeniodawców jest wynikiem wyszukiwania według przekazanych parametrów.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "description": "Nazwa świadczeniodawcy (maks. 250 znaków)",
+            "schema": {
+              "maxLength": 250,
+              "type": "string"
+            }
+          },
+          {
+            "name": "province",
+            "in": "query",
+            "description": "Kod województwa\n\nDostępne wartości:\n\n01 – dolnośląskie\n\n02 – kujawsko-pomorskie\n\n03 – lubelskie\n\n04 – lubuskie\n\n05 – łódzkie\n\n06 – małopolskie\n\n07 – mazowieckie\n\n08 – opolskie\n\n09 – podkarpackie\n\n10 – podlaskie\n\n11 – pomorskie\n\n12 – śląskie\n\n13 – świętokrzyskie\n\n14 – warmińsko-mazurskie\n\n15 – wielkopolskie\n\n16 – zachodniopomorskie\n",
+            "schema": {
+              "maxLength": 2,
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Określa aktualnie wyświetlaną stronę.",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Określa liczbę pozycji wyświetlanych na stronie (maks. 25)",
+            "schema": {
+              "maximum": 25,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32",
+              "default": 10
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "description": "Określa format odpowiedzi.\n            json — JavaScript object notation (default)\n            xml — Extensible markup language",
+            "schema": {
+              "type": "string",
+              "default": "json"
+            }
+          },
+          {
+            "name": "api-version",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista nazw świadczeniodawców",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/providers-response"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/providers-response"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/providers-response"
+                }
+              },
+              "application/xml": {
+                "schema": {
+                  "$ref": "#/components/schemas/providers-response"
+                }
+              },
+              "text/xml": {
+                "schema": {
+                  "$ref": "#/components/schemas/providers-response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              },
+              "application/xml": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              },
+              "text/xml": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/streets": {
+      "get": {
+        "tags": [
+          "Dictionaries"
+        ],
+        "summary": "",
+        "description": "Zasób zwraca nazwy ulic miejsc udzielania świadczeń zdrowotnych wybranych z bazy danych z nazwami ulic, które zawierają pozycje dostarczane przez podmioty świadczące opiekę zdrowotną. Lista ulic jest wynikiem wyszukiwania według przekazanych parametrów.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "description": "Nazwa ulicy miejsca udzielania świadczeń (maks. 250 znaków)",
+            "schema": {
+              "maxLength": 250,
+              "type": "string"
+            }
+          },
+          {
+            "name": "province",
+            "in": "query",
+            "description": "Kod województwa\n\nDostępne wartości:\n\n01 – dolnośląskie\n\n02 – kujawsko-pomorskie\n\n03 – lubelskie\n\n04 – lubuskie\n\n05 – łódzkie\n\n06 – małopolskie\n\n07 – mazowieckie\n\n08 – opolskie\n\n09 – podkarpackie\n\n10 – podlaskie\n\n11 – pomorskie\n\n12 – śląskie\n\n13 – świętokrzyskie\n\n14 – warmińsko-mazurskie\n\n15 – wielkopolskie\n\n16 – zachodniopomorskie\n",
+            "schema": {
+              "maxLength": 2,
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Określa aktualnie wyświetlaną stronę.",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Określa liczbę pozycji wyświetlanych na stronie (maks. 25)",
+            "schema": {
+              "maximum": 25,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32",
+              "default": 10
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "description": "Określa format odpowiedzi.\n            json — JavaScript object notation (default)\n            xml — Extensible markup language",
+            "schema": {
+              "type": "string",
+              "default": "json"
+            }
+          },
+          {
+            "name": "api-version",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista nazw ulic miejsc udzielania świadczeń",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/streets-response"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/streets-response"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/streets-response"
+                }
+              },
+              "application/xml": {
+                "schema": {
+                  "$ref": "#/components/schemas/streets-response"
+                }
+              },
+              "text/xml": {
+                "schema": {
+                  "$ref": "#/components/schemas/streets-response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              },
+              "application/xml": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              },
+              "text/xml": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/queues": {
+      "get": {
+        "tags": [
+          "Queues"
+        ],
+        "summary": "",
+        "description": "Lista prognozowanych czasów oczekiwania określonych parametrami wyszukiwania. Odpowiedź zawiera szczegółowe informacje  oraz listę świadczeń medycznych we właściwej kolejności wyświetlania",
+        "parameters": [
+          {
+            "name": "province",
+            "in": "query",
+            "description": "Kod województwa\n\nDostępne wartości:\n\n01 – dolnośląskie\n\n02 – kujawsko-pomorskie\n\n03 – lubelskie\n\n04 – lubuskie\n\n05 – łódzkie\n\n06 – małopolskie\n\n07 – mazowieckie\n\n08 – opolskie\n\n09 – podkarpackie\n\n10 – podlaskie\n\n11 – pomorskie\n\n12 – śląskie\n\n13 – świętokrzyskie\n\n14 – warmińsko-mazurskie\n\n15 – wielkopolskie\n\n16 – zachodniopomorskie\n",
+            "schema": {
+              "maxLength": 2,
+              "type": "string"
+            }
+          },
+          {
+            "name": "benefit",
+            "in": "query",
+            "description": "Nazwa świadczenia określonego przez NFZ (maks. 250 znaków)",
+            "schema": {
+              "maxLength": 250,
+              "type": "string"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "description": "Nazwa świadczeniodawcy (maks. 250 znaków)",
+            "schema": {
+              "maxLength": 250,
+              "type": "string"
+            }
+          },
+          {
+            "name": "place",
+            "in": "query",
+            "description": "Nazwa miejsca udzielania świadczeń (maks. 250 znaków)",
+            "schema": {
+              "maxLength": 250,
+              "type": "string"
+            }
+          },
+          {
+            "name": "street",
+            "in": "query",
+            "description": "Nazwa ulicy miejsca udzielania świadczeń (maks. 250 znaków)",
+            "schema": {
+              "maxLength": 250,
+              "type": "string"
+            }
+          },
+          {
+            "name": "locality",
+            "in": "query",
+            "description": "Nazwa miejscowości miejsca udzielania świadczeń (maks. 250 znaków)",
+            "schema": {
+              "maxLength": 250,
+              "type": "string"
+            }
+          },
+          {
+            "name": "case",
+            "in": "query",
+            "description": "Przypadek (1-stabilny, 2-pilny). Gdy nie wskazano przyjmuje wartość 1.",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 1
+            }
+          },
+          {
+            "name": "anesthesia",
+            "in": "query",
+            "description": "Znieczulenie wykonywane tylko dla świadczeń z zakresu gastroskopii i kolonoskopii",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          {
+            "name": "benefitForAdultsChildren",
+            "in": "query",
+            "description": "Miejsca w ramach których udzielane są również świadczenia dzieciom. Gdy nie wskazano przyjmuje wartość 1.\n\nDostępne wartości:\n\n1 - Wszyscy\n\n2 - Dorośli\n\n3 - Dzieci\n",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 1
+            }
+          },
+          {
+            "name": "benefitForChildren_0_3",
+            "in": "query",
+            "description": "Miejsca w ramach których udzielane są również świadczenia dzieciom w wieku 0-3 (filtrowanie na podstawie kodu specjalności komórki bądź znacznika przekazanego przez świadczeniodawcę)",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "benefitForChildren_4_9",
+            "in": "query",
+            "description": "Miejsca w ramach których udzielane są również świadczenia dzieciom w wieku 4-9 (filtrowanie na podstawie kodu specjalności komórki bądź znacznika przekazanego przez świadczeniodawcę)",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "benefitForChildren_10_15",
+            "in": "query",
+            "description": "Miejsca w ramach których udzielane są również świadczenia dzieciom w wieku 10-15 (filtrowanie na podstawie kodu specjalności komórki bądź znacznika przekazanego przez świadczeniodawcę)",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "benefitForChildren_16_18",
+            "in": "query",
+            "description": "Miejsca w ramach których udzielane są również świadczenia dzieciom w wieku 15-18 (filtrowanie na podstawie kodu specjalności komórki bądź znacznika przekazanego przez świadczeniodawcę)",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Określa aktualnie wyświetlaną stronę.",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Określa liczbę pozycji wyświetlanych na stronie (maks. 25)",
+            "schema": {
+              "maximum": 25,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32",
+              "default": 10
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "description": "Określa format odpowiedzi.\n            json — JavaScript object notation\n            xml — Extensible markup language",
+            "schema": {
+              "type": "string",
+              "default": "json"
+            }
+          },
+          {
+            "name": "api-version",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista prognozowanych czasów oczekiwania określonych parametrami wyszukiwania",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/queues-response"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/queues-response"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/queues-response"
+                }
+              },
+              "application/xml": {
+                "schema": {
+                  "$ref": "#/components/schemas/queues-response"
+                }
+              },
+              "text/xml": {
+                "schema": {
+                  "$ref": "#/components/schemas/queues-response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/errors-response"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/errors-response"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/errors-response"
+                }
+              },
+              "application/xml": {
+                "schema": {
+                  "$ref": "#/components/schemas/errors-response"
+                }
+              },
+              "text/xml": {
+                "schema": {
+                  "$ref": "#/components/schemas/errors-response"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/queues/{id}": {
+      "get": {
+        "tags": [
+          "Queues"
+        ],
+        "summary": "",
+        "description": "Zasób zwraca informacje o wybranym świadczeniu medycznym z listy wyświetlanej w wyniku wyszukiwania zgodnie z wybranymi parametrami wyszukiwania. Wynik zawiera szczegółowe informacje o leczeniu i prognozowany czas udzielenia świadczenia.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Unikalny identyfikator terminu leczenia",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "description": "Określa format odpowiedzi.\njson — JavaScript object notation\nxml — Extensible markup language",
+            "schema": {
+              "type": "string",
+              "default": "json"
+            }
+          },
+          {
+            "name": "api-version",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Szczegółowe informacje na temat wybranego świadczenia i prognozowanej daty udzielenia świadczenia.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/queues-response"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/queues-response"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/queues-response"
+                }
+              },
+              "application/xml": {
+                "schema": {
+                  "$ref": "#/components/schemas/queues-response"
+                }
+              },
+              "text/xml": {
+                "schema": {
+                  "$ref": "#/components/schemas/queues-response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              },
+              "application/xml": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              },
+              "text/xml": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/many-places/{id}": {
+      "get": {
+        "tags": [
+          "Queues"
+        ],
+        "summary": "",
+        "description": "Zasób zwraca listę dotyczącą wcześniej wybranego świadczenia z prognozowanymi czasami udzielenia świadczenia, które dostarcza ten sam podmiot świadczący opiekę zdrowotną",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Unikalny identyfikator",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "description": "Określa format odpowiedzi.\njson — JavaScript object notation\nxml — Extensible markup language",
+            "schema": {
+              "type": "string",
+              "default": "json"
+            }
+          },
+          {
+            "name": "api-version",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista prognozowanych czasów udzielenia świadczenia dla wybranego identyfikatora",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/many-places-response"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/many-places-response"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/many-places-response"
+                }
+              },
+              "application/xml": {
+                "schema": {
+                  "$ref": "#/components/schemas/many-places-response"
+                }
+              },
+              "text/xml": {
+                "schema": {
+                  "$ref": "#/components/schemas/many-places-response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              },
+              "application/xml": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              },
+              "text/xml": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/version": {
+      "get": {
+        "tags": [
+          "Version"
+        ],
+        "summary": "",
+        "parameters": [
+          {
+            "name": "api-version",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/version-response"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/version-response"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/version-response"
+                }
+              },
+              "application/xml": {
+                "schema": {
+                  "$ref": "#/components/schemas/version-response"
+                }
+              },
+              "text/xml": {
+                "schema": {
+                  "$ref": "#/components/schemas/version-response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/errors-response"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/errors-response"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/errors-response"
+                }
+              },
+              "application/xml": {
+                "schema": {
+                  "$ref": "#/components/schemas/errors-response"
+                }
+              },
+              "text/xml": {
+                "schema": {
+                  "$ref": "#/components/schemas/errors-response"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/version/sources": {
+      "get": {
+        "tags": [
+          "Version"
+        ],
+        "parameters": [
+          {
+            "name": "api-version",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "api-version": {
+        "type": "object",
+        "properties": {
+          "major": {
+            "type": "integer",
+            "description": "Numer major wersji",
+            "format": "int32"
+          },
+          "minor": {
+            "type": "integer",
+            "description": "Numer minor wersji",
+            "format": "int32"
+          },
+          "patch": {
+            "type": "integer",
+            "description": "Numer patch wersji",
+            "format": "int32"
+          },
+          "date-mod": {
+            "type": "string",
+            "description": "Data modifikacji zasobu",
+            "format": "date"
+          },
+          "deprecated": {
+            "type": "boolean",
+            "description": "Określa czy dana wersja jest przestarzała"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Szczegóły dotyczące wersji api\nSchema: https://api.nfz.gov.pl/app-itl-api/schema/schemas/api-version"
+      },
+      "benefits-provided": {
+        "type": "object",
+        "properties": {
+          "type-of-benefit": {
+            "type": "integer",
+            "description": "Typ świdczenia którgo dotyczy ilość wykonanych świadczeń\n1 - świadczenia z zakresu endoprotezoplastyki",
+            "format": "int32",
+            "nullable": true
+          },
+          "year": {
+            "type": "integer",
+            "description": "Rok w którym ilość świadczeń została wykonana",
+            "format": "int32",
+            "nullable": true
+          },
+          "amount": {
+            "type": "integer",
+            "description": "Ilość wykonanych świadczeń",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Informacje o ilosci wykonanych świadczeń\nSchema: https://api.nfz.gov.pl/app-itl-api/schema/benefits-provided"
+      },
+      "benefits-response": {
+        "type": "object",
+        "properties": {
+          "meta": {
+            "$ref": "#/components/schemas/data"
+          },
+          "links": {
+            "$ref": "#/components/schemas/links"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Lista nazw świadczeń",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Odpowiedź na żadanie nazwy świadczenia określonego przez NFZ\nSchema: https://api.nfz.gov.pl/app-itl-api/schema/benefit"
+      },
+      "computed-data": {
+        "type": "object",
+        "properties": {
+          "average-period": {
+            "type": "integer",
+            "description": "Średnia liczba dni oczekiwania na świadczenie zdrowotne. NULLABLE",
+            "format": "int32",
+            "nullable": true
+          },
+          "update": {
+            "type": "string",
+            "description": "Miesiąc aktualizacji danych dotyczących liczby osób wpisanych na listę oczekujących na świadczenie zdrowotne, liczby osób skreślonych w ciągu miesiąca \nz listy oczekujących z powodu udzielenia świadczenia oraz średniej liczby dni oczekiwania na świadczenie zdrowotne",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Informacje statystyczne obiczone i dostarczone przez NFZ\nSchema: https://api.nfz.gov.pl/app-itl-api/schema/computed-data"
+      },
+      "data": {
+        "type": "object",
+        "properties": {
+          "context": {
+            "type": "string",
+            "description": "Link do kontekstu wyjaśniającego model",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "url": {
+            "type": "string",
+            "nullable": true
+          },
+          "provider": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "date-published": {
+            "type": "string",
+            "nullable": true
+          },
+          "date-modified": {
+            "type": "string",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "keywords": {
+            "type": "string",
+            "nullable": true
+          },
+          "language": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "content-type": {
+            "type": "string",
+            "nullable": true
+          },
+          "is-part-of": {
+            "type": "string",
+            "nullable": true
+          },
+          "message": {
+            "$ref": "#/components/schemas/message"
+          },
+          "count": {
+            "type": "integer",
+            "description": "Liczba znalezionych pozycji",
+            "format": "int32"
+          },
+          "page": {
+            "type": "integer",
+            "description": "Aktualnie przeglądana strona",
+            "format": "int32"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Liczba pozycji na stronę",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Metadane\nWięcej informacji: https://api.nfz.gov.pl/metadata"
+      },
+      "error": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Identyfikator",
+            "format": "uuid"
+          },
+          "error-result": {
+            "type": "string",
+            "description": "Wynik",
+            "nullable": true
+          },
+          "error-reason": {
+            "type": "string",
+            "description": "Przyczyna błędu",
+            "nullable": true
+          },
+          "error-solution": {
+            "type": "string",
+            "description": "Zalecane działanie",
+            "nullable": true
+          },
+          "error-help": {
+            "type": "string",
+            "description": "Pomoc",
+            "nullable": true
+          },
+          "error-code": {
+            "type": "integer",
+            "description": "Kod błędu",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Szczegóły błędu"
+      },
+      "errors-response": {
+        "type": "object",
+        "properties": {
+          "errors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/error"
+            },
+            "description": "Lista błędów",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Odpowiedź z informacją na temat błędów"
+      },
+      "estimated-time-to-receive-benefit": {
+        "type": "object",
+        "properties": {
+          "applicable": {
+            "type": "boolean",
+            "description": "Wyróżnik określający czy dla świadczenia występuje PCUS"
+          },
+          "pcus": {
+            "type": "string",
+            "description": "Prognozowany czas udzielenia świadczenia.",
+            "nullable": true
+          },
+          "date-situation-as-at": {
+            "type": "string",
+            "description": "Data aktualizacji prognozowanego PCUS",
+            "format": "date",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Prognozowany czas udzielenia świadczenia \nSchema: https://api.nfz.gov.pl/app-itl-api/schema/estimated-time-to-receive-benefit"
+      },
+      "links": {
+        "type": "object",
+        "properties": {
+          "first": {
+            "type": "string",
+            "description": "Link do pierwszej strony ze znalezionymi pozycjami",
+            "nullable": true
+          },
+          "prev": {
+            "type": "string",
+            "description": "Link do poprzedniej strony ze znalezionymi pozycjami",
+            "nullable": true
+          },
+          "self": {
+            "type": "string",
+            "description": "Link aktualnej strony ze znalezionymi pozycjami",
+            "nullable": true
+          },
+          "next": {
+            "type": "string",
+            "description": "Link do następnej strony ze znalezionymi pozycjami",
+            "nullable": true
+          },
+          "last": {
+            "type": "string",
+            "description": "Link do ostatniej strony ze znalezionymi pozycjami",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Linki nawigujące HATEOS\nWięcej informacji: https://api.nfz.gov.pl/metadata/#links"
+      },
+      "localities-response": {
+        "type": "object",
+        "properties": {
+          "meta": {
+            "$ref": "#/components/schemas/data"
+          },
+          "links": {
+            "$ref": "#/components/schemas/links"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Lista miejscowości",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Odpowiedź na żadanie nazwy miejscowości miejsca udzielania świadczeń\nSchema: https://api.nfz.gov.pl/app-itl-api/schema/locality"
+      },
+      "many-places": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Typ obiektu",
+            "nullable": true,
+            "readOnly": true
+          },
+          "attributes": {
+            "$ref": "#/components/schemas/many-places-attributes"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Szczegóły dotyczące wielu miejsc\nSchema: https://api.nfz.gov.pl/app-itl-api/schema/many-places"
+      },
+      "many-places-attributes": {
+        "type": "object",
+        "properties": {
+          "benefit": {
+            "type": "string",
+            "description": "Nazwa świadczenia zdrowotnego (procedury medycznej, programu lekowego, świadczenia w poradni specjalistycznej, w oddziale szpitalnym, \nw pracowni diagnostycznej, w ośrodku opieki pozaszpitalnej), dla którego dany świadczeniodawca prowadzi listę oczekujących.",
+            "nullable": true
+          },
+          "provider": {
+            "type": "string",
+            "description": "Nazwa świadczeniodawcy, który udziela dane świadczenie w ramach zawartej umowy z NFZ",
+            "nullable": true
+          },
+          "places": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/many-places-queue"
+            },
+            "description": "Lista prognozowanych terminów udzielenia świadczenia dla danego świadczeniodwcy w innych miejscach w ramach zawartej umowy z NFZ\nSchema: https://api.nfz.gov.pl/app-itl-api/schema/queue",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Szczegóły przestawiające atrybuty znacznika wskazującego, czy świadczeniodawca udziela dane świadczenie zdrowotne w innych miejscach w ramach zawartej umowy z NFZ"
+      },
+      "many-places-queue": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unikalny identyfikator",
+            "format": "uuid"
+          },
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "attributes": {
+            "$ref": "#/components/schemas/place"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Szczegóły listy prognozowanych czasów udzielenia świadczenia w innych miejscach dla wybranego świadczenia udzielanego przez konkretnego świadczeniodawcę\nSchema: https://api.nfz.gov.pl/app-itl-api/schema/many-places-queue"
+      },
+      "many-places-response": {
+        "type": "object",
+        "properties": {
+          "meta": {
+            "$ref": "#/components/schemas/meta"
+          },
+          "data": {
+            "$ref": "#/components/schemas/many-places"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Odpowiedź na żądanie listy szczegółów dotyczących prognozowanych czasów udzielenia świadczenia przez świadczeniodawcę w innych miejscach w ramach zawartej umowy z NFZ"
+      },
+      "message": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "content": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "meta": {
+        "type": "object",
+        "properties": {
+          "context": {
+            "type": "string",
+            "description": "Link do kontekstu wyjaśniającego model",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "url": {
+            "type": "string",
+            "nullable": true
+          },
+          "provider": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "date-published": {
+            "type": "string",
+            "nullable": true
+          },
+          "date-modified": {
+            "type": "string",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "keywords": {
+            "type": "string",
+            "nullable": true
+          },
+          "language": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "content-type": {
+            "type": "string",
+            "nullable": true
+          },
+          "is-part-of": {
+            "type": "string",
+            "nullable": true
+          },
+          "message": {
+            "$ref": "#/components/schemas/message"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Metadane\nWięcej informacji: https://api.nfz.gov.pl/metadata"
+      },
+      "place": {
+        "type": "object",
+        "properties": {
+          "place": {
+            "type": "string",
+            "description": "Nazwa miejsca udzielania świadczeń w szpitalu/przychodni",
+            "nullable": true
+          },
+          "address": {
+            "type": "string",
+            "description": "Adres miejsca udzielania świadczeń w szpitalu/przychodni",
+            "nullable": true
+          },
+          "locality": {
+            "type": "string",
+            "description": "Miejscowość miejsca udzielania świadczeń w szpitalu/przychodni",
+            "nullable": true
+          },
+          "phone": {
+            "type": "string",
+            "description": "Telefon do miejsca udzielania świadczeń w szpitalu/przychodni",
+            "nullable": true
+          },
+          "teryt-place": {
+            "type": "string",
+            "description": "Kod TERYT miejsca udzielania świadczeń w szpitalu/przychodni",
+            "nullable": true
+          },
+          "id-resort-part-VII": {
+            "type": "string",
+            "description": "VII część kodu resortowego miejsca udzielania świadczeń",
+            "nullable": true
+          },
+          "id-resort-part-VIII": {
+            "type": "string",
+            "description": "VIII część kodu resortowego miejsca udzielania świadczeń",
+            "nullable": true
+          },
+          "benefits-for-children": {
+            "type": "string",
+            "description": "Znacznik wskazujący, czy w miejscu udzielania świadczeń udzielane są świadczenia dla dzieci. Przyjmuje wartości: N = nie, Y = tak",
+            "nullable": true
+          },
+          "age-range": {
+            "type": "string",
+            "description": "Znacznik wskazujący świadczenia wykonywane dla określonych grup wiekowych",
+            "nullable": true
+          },
+          "anesthesia": {
+            "type": "string",
+            "description": "Znacznik wskazujący, czy jest wykonywane znieczulenie dla dzieci dla świadczeń z zakresu gastroskopii i kolonoskopii. Przyjmuje wartości: N = nie, Y = tak",
+            "nullable": true
+          },
+          "covid-19": {
+            "type": "string",
+            "description": "Znacznik wskazujący, czy świadczeniodawca zwolniony jest ze sprawozdawczości z powodu prowadzonia leczenia na COVID-19 w mjescu udzielania świadczeń. Przyjmuje wartości: N = nie, Y = tak",
+            "nullable": true
+          },
+          "toilet": {
+            "type": "string",
+            "description": "Znacznik wskazujący, czy w miejscu udzielania świadczeń znajduje się łazienka dla niepełnosprawnych. Przyjmuje wartości: N = nie, Y = tak",
+            "nullable": true
+          },
+          "ramp": {
+            "type": "string",
+            "description": "Znacznik wskazujący, czy w miejscu udzielania świadczeń znajduje się podjazd dla niepełnosprawnych. Przyjmuje wartości: N = nie, Y = tak",
+            "nullable": true
+          },
+          "car-park": {
+            "type": "string",
+            "description": "Znacznik wskazujący, czy przy miejscu udzielania świadczeń znajduje się parking. Przyjmuje wartości: N = nie, Y = tak",
+            "nullable": true
+          },
+          "elevator": {
+            "type": "string",
+            "description": "Znacznik wskazujący, czy w miejscu udzielania świadczeń znajduje się winda. Przyjmuje wartości: N = nie, Y = tak",
+            "nullable": true
+          },
+          "type-building": {
+            "type": "integer",
+            "description": "Znacznik wskazujący, rodzaj budynku: 1 - budynek parterowy, 2 - budynek wielokondygnacyjny, null - brak informacji",
+            "format": "int32",
+            "nullable": true
+          },
+          "ac": {
+            "type": "string",
+            "description": "Znacznik wskazujący, czy w miejscu udzielania świadczeń znajduje się klimatyzacja. Przyjmuje wartości: N = nie, Y = tak, null - brak informacji",
+            "nullable": true
+          },
+          "automatic-door": {
+            "type": "string",
+            "description": "Znacznik wskazujący, czy w miejscu udzielania świadczeń znajdują się automatyczne drzwi. Przyjmuje wartości: N = nie, Y = tak, null - brak informacji",
+            "nullable": true
+          },
+          "public-transport-lines": {
+            "type": "string",
+            "description": "Numery linii komunikacji publicznej w pobliżu miejsca udzielania świadczeń.",
+            "nullable": true
+          },
+          "wheelchairs": {
+            "type": "string",
+            "description": "Znacznik wskazujący, czy w miejscu udzielania świadczeń znajdują się wózki dla niepełnosprawnych. Przyjmuje wartości: N = nie, Y = tak, null - brak informacji",
+            "nullable": true
+          },
+          "corridors": {
+            "type": "string",
+            "description": "Znacznik wskazujący, czy w miejscu udzielania świadczeń znajdują się korytarze dostosowane dla osób niepełnosprawnych. Przyjmuje wartości: N = nie, Y = tak, null - brak informacji",
+            "nullable": true
+          },
+          "latitude": {
+            "type": "number",
+            "description": "Szerokość geograficzna miejsca udzielania świadczeń",
+            "format": "double",
+            "nullable": true
+          },
+          "longitude": {
+            "type": "number",
+            "description": "Długość geograficzna miejsca udzielania świadczeń",
+            "format": "double",
+            "nullable": true
+          },
+          "queue-in-cer": {
+            "type": "string",
+            "description": "Znacznik wskazujący, czy kolejka znajduje się w CER. Przyjmuje wartości: N = nie, Y = tak",
+            "nullable": true
+          },
+          "statistics": {
+            "$ref": "#/components/schemas/statistics"
+          },
+          "dates": {
+            "$ref": "#/components/schemas/estimated-time-to-receive-benefit"
+          }
+        },
+        "additionalProperties": false
+      },
+      "places-response": {
+        "type": "object",
+        "properties": {
+          "meta": {
+            "$ref": "#/components/schemas/data"
+          },
+          "links": {
+            "$ref": "#/components/schemas/links"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Lista miejsc udzielania świadczeń",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Odpowiedź na żadanie nazwy miejsca udzielania świadczeń\nSchema: https://api.nfz.gov.pl/app-itl-api/schema/place"
+      },
+      "provider-data": {
+        "type": "object",
+        "properties": {
+          "awaiting": {
+            "type": "integer",
+            "description": "Liczba osób wpisanych na listę oczekujących na świadczenie zdrowotne wg stanu na koniec miesiąca. W liczbie tej nie uwzględniane są osoby kontynuujące \nleczenie oraz osoby z uprawnieniami do korzystania ze świadczeń poza kolejnością",
+            "format": "int32"
+          },
+          "removed": {
+            "type": "integer",
+            "description": "Liczba osób skreślonych w ciągu miesiąca z listy oczekujących z powodu udzielenia świadczenia",
+            "format": "int32"
+          },
+          "average-period": {
+            "type": "integer",
+            "description": "Średnia liczba dni oczekiwania na świadczenie zdrowotne. NULLABLE",
+            "format": "int32",
+            "nullable": true
+          },
+          "update": {
+            "type": "string",
+            "description": "Miesiąc aktualizacji danych dotyczących liczby osób wpisanych na listę oczekujących na świadczenie zdrowotne, liczby osób skreślonych w ciągu miesiąca \nz listy oczekujących z powodu udzielenia świadczenia oraz średniej liczby dni oczekiwania na świadczenie zdrowotne",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Informacje statystyczne dostarczone przez świadczeniodawcę\nSchema: https://api.nfz.gov.pl/app-itl-api/schema/provider-data"
+      },
+      "providers-response": {
+        "type": "object",
+        "properties": {
+          "meta": {
+            "$ref": "#/components/schemas/data"
+          },
+          "links": {
+            "$ref": "#/components/schemas/links"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Lista świadczeniodawców",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Odpowiedź na żadanie nazwy świadczeniodawcy\nSchema: https://api.nfz.gov.pl/app-itl-api/schema/provider"
+      },
+      "queue": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Typ obiektu",
+            "nullable": true,
+            "readOnly": true
+          },
+          "id": {
+            "type": "string",
+            "description": "Unikalny identyfikator",
+            "format": "uuid"
+          },
+          "attributes": {
+            "$ref": "#/components/schemas/queue-attributes"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Szczegóły prognozowanego czasu udzielenia świadczenia\nSchema: https://api.nfz.gov.pl/app-itl-api/schema/queue"
+      },
+      "queue-attributes": {
+        "type": "object",
+        "properties": {
+          "case": {
+            "type": "integer",
+            "description": "Kategoria medyczna, do której jest kwalifikowany pacjent na podstawie informacji m.in. o jego stanie zdrowia, chorobach współistniejących, \nrokowaniach co do dalszego przebiegu choroby, wykazywana najczęściej na skierowaniu. Przyjmuje wartości: 1 = przypadek stabilny (w innych przypadkach niż stan nagły i przypadek pilny),\n2 = przypadek pilny (jeśli istnieje konieczność pilnego  udzielenia świadczenia).",
+            "format": "int32"
+          },
+          "benefit": {
+            "type": "string",
+            "description": "Nazwa świadczenia zdrowotnego (procedury medycznej, programu lekowego, świadczenia w poradni specjalistycznej, w oddziale szpitalnym, w pracowni diagnostycznej, \nw ośrodku opieki pozaszpitalnej), dla którego dany świadczeniodawca prowadzi listę oczekujących.",
+            "nullable": true
+          },
+          "anesthesia": {
+            "type": "string",
+            "description": "Znieczulenie wykonywane dla świadczeń z zakresu gastroskopii i kolonoskopii. Przyjmuje wartości: N = nie, Y = tak",
+            "nullable": true
+          },
+          "many-places": {
+            "type": "string",
+            "description": "Znacznik wskazujący, czy świadczeniodawca udziela dane świadczenie zdrowotne w innych miejscach w ramach zawartej umowy z NFZ. Przyjmuje wartości: N = nie udziela świadczenia \nw innych miejscach, Y - udziela świadczenie w innych miejscach",
+            "nullable": true
+          },
+          "provider": {
+            "type": "string",
+            "description": "Nazwa świadczeniodawcy, który udziela dane świadczenie w ramach zawartej umowy z NFZ",
+            "nullable": true
+          },
+          "provider-code": {
+            "type": "string",
+            "description": "Kod świadczeniodawcy, który udziela dane świadczenie w ramach zawartej umowy z NFZ",
+            "nullable": true
+          },
+          "regon-provider": {
+            "type": "string",
+            "description": "Numer REGON świadczeniodawcy, który udziela dane świadczenie w ramach zawartej umowy z NFZ",
+            "nullable": true
+          },
+          "nip-provider": {
+            "type": "string",
+            "description": "Numer NIP świadczeniodawcy, który udziela dane świadczenie w ramach zawartej umowy z NFZ",
+            "nullable": true
+          },
+          "teryt-provider": {
+            "type": "string",
+            "description": "Kod TERYT świadczeniodawcy, który udziela dane świadczenie w ramach zawartej umowy z NFZ",
+            "nullable": true
+          },
+          "place": {
+            "type": "string",
+            "description": "Nazwa miejsca udzielania świadczeń w szpitalu/przychodni",
+            "nullable": true
+          },
+          "address": {
+            "type": "string",
+            "description": "Adres miejsca udzielania świadczeń w szpitalu/przychodni",
+            "nullable": true
+          },
+          "locality": {
+            "type": "string",
+            "description": "Miejscowość miejsca udzielania świadczeń w szpitalu/przychodni",
+            "nullable": true
+          },
+          "phone": {
+            "type": "string",
+            "description": "Telefon do miejsca udzielania świadczeń w szpitalu/przychodni",
+            "nullable": true
+          },
+          "teryt-place": {
+            "type": "string",
+            "description": "Kod TERYT miejsca udzielania świadczeń w szpitalu/przychodni",
+            "nullable": true
+          },
+          "registry-number": {
+            "type": "string",
+            "description": "Numer księgi rejestrowej",
+            "nullable": true
+          },
+          "id-resort-part-VII": {
+            "type": "string",
+            "description": "VII część kodu resortowego miejsca udzielania świadczeń",
+            "nullable": true
+          },
+          "id-resort-part-VIII": {
+            "type": "string",
+            "description": "VIII część kodu resortowego miejsca udzielania świadczeń",
+            "nullable": true
+          },
+          "benefits-for-children": {
+            "type": "string",
+            "description": "Znacznik wskazujący, czy w miejscu udzielania świadczeń udzielane są świadczenia dla dzieci. Przyjmuje wartości: N = nie, Y = tak",
+            "nullable": true
+          },
+          "age-range": {
+            "type": "string",
+            "description": "Przedział wiekowy dla świadczeń udzielanych dzieciom w poradniach dla dorosłych",
+            "nullable": true
+          },
+          "covid-19": {
+            "type": "string",
+            "description": "Znacznik wskazujący, czy świadczeniodawca zwolniony jest ze sprawozdawczości z powodu prowadzonia leczenia na COVID-19 w mjescu udzielania świadczeń. Przyjmuje wartości: N = nie, Y = tak",
+            "nullable": true
+          },
+          "toilet": {
+            "type": "string",
+            "description": "Znacznik wskazujący, czy w miejscu udzielania świadczeń znajduje się łazienka dla niepełnosprawnych. Przyjmuje wartości: N = nie, Y = tak",
+            "nullable": true
+          },
+          "ramp": {
+            "type": "string",
+            "description": "Znacznik wskazujący, czy w miejscu udzielania świadczeń znajduje się podjazd dla niepełnosprawnych. Przyjmuje wartości: N = nie, Y = tak",
+            "nullable": true
+          },
+          "car-park": {
+            "type": "string",
+            "description": "Znacznik wskazujący, czy przy miejscu udzielania świadczeń znajduje się parking. Przyjmuje wartości: N = nie, Y = tak",
+            "nullable": true
+          },
+          "elevator": {
+            "type": "string",
+            "description": "Znacznik wskazujący, czy w miejscu udzielania świadczeń znajduje się winda. Przyjmuje wartości: N = nie, Y = tak",
+            "nullable": true
+          },
+          "type-building": {
+            "type": "integer",
+            "description": "Znacznik wskazujący, rodzaj budynku: 1 - budynek parterowy, 2 - budynek wielokondygnacyjny, null - brak informacji",
+            "format": "int32",
+            "nullable": true
+          },
+          "ac": {
+            "type": "string",
+            "description": "Znacznik wskazujący, czy w miejscu udzielania świadczeń znajduje się klimatyzacja. Przyjmuje wartości: N = nie, Y = tak, null - brak informacji",
+            "nullable": true
+          },
+          "automatic-door": {
+            "type": "string",
+            "description": "Znacznik wskazujący, czy w miejscu udzielania świadczeń znajdują się automatyczne drzwi. Przyjmuje wartości: N = nie, Y = tak, null - brak informacji",
+            "nullable": true
+          },
+          "public-transport-lines": {
+            "type": "string",
+            "description": "Numery linii komunikacji publicznej w pobliżu miejsca udzielania świadczeń.",
+            "nullable": true
+          },
+          "wheelchairs": {
+            "type": "string",
+            "description": "Znacznik wskazujący, czy w miejscu udzielania świadczeń znajdują się wózki dla niepełnosprawnych. Przyjmuje wartości: N = nie, Y = tak, null - brak informacji",
+            "nullable": true
+          },
+          "corridors": {
+            "type": "string",
+            "description": "Znacznik wskazujący, czy w miejscu udzielania świadczeń znajdują się korytarze dostosowane dla osób niepełnosprawnych. Przyjmuje wartości: N = nie, Y = tak, null - brak informacji",
+            "nullable": true
+          },
+          "latitude": {
+            "type": "number",
+            "description": "Szerokość geograficzna miejsca udzielania świadczeń",
+            "format": "double",
+            "nullable": true
+          },
+          "longitude": {
+            "type": "number",
+            "description": "Długość geograficzna miejsca udzielania świadczeń",
+            "format": "double",
+            "nullable": true
+          },
+          "queue-in-cer": {
+            "type": "string",
+            "description": "Znacznik wskazujący, czy kolejka znajduje się w CER. Przyjmuje wartości: N = nie, Y = tak",
+            "nullable": true
+          },
+          "statistics": {
+            "$ref": "#/components/schemas/statistics"
+          },
+          "dates": {
+            "$ref": "#/components/schemas/estimated-time-to-receive-benefit"
+          },
+          "benefits-provided": {
+            "$ref": "#/components/schemas/benefits-provided"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Szczegóły przedstawiające atrybuty prognozowanego czasu udzielenia świadczenia"
+      },
+      "queues-response": {
+        "type": "object",
+        "properties": {
+          "meta": {
+            "$ref": "#/components/schemas/data"
+          },
+          "links": {
+            "$ref": "#/components/schemas/links"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/queue"
+            },
+            "description": "Lista prognozowanych czasów udzielenia świadczenia",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Odpowiedź na żądanie listy prognozowanych czasów udzielenia świadczenia"
+      },
+      "statistics": {
+        "type": "object",
+        "properties": {
+          "provider-data": {
+            "$ref": "#/components/schemas/provider-data"
+          },
+          "computed-data": {
+            "$ref": "#/components/schemas/computed-data"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Informacje statystyczne dotyczące listy oczekujących\nSchema: https://api.nfz.gov.pl/app-itl-api/schema/statistics"
+      },
+      "streets-response": {
+        "type": "object",
+        "properties": {
+          "meta": {
+            "$ref": "#/components/schemas/data"
+          },
+          "links": {
+            "$ref": "#/components/schemas/links"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Lista ulic",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Odpowiedź na żadanie nazwy ulicy miejsca udzielania świadczeń\nSchema: https://api.nfz.gov.pl/app-itl-api/schema/street"
+      },
+      "version-response": {
+        "type": "object",
+        "properties": {
+          "api-version": {
+            "$ref": "#/components/schemas/api-version"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Szczegóły dotyczące wersji API\nSchema: https://api.nfz.gov.pl/app-itl-api/schema/schemas"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Dictionaries",
+      "description": "Słowniki"
+    },
+    {
+      "name": "Queues",
+      "description": "Terminy leczenia"
+    },
+    {
+      "name": "Version",
+      "description": "Info"
+    }
+  ]
+}

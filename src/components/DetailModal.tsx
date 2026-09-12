@@ -1,0 +1,126 @@
+import { useEffect } from 'react';
+import type { Facility } from '../lib/types';
+import { A11Y_FILTERS } from '../lib/types';
+import { formatAwaiting, formatDaysLong } from '../lib/wait';
+import { CloseIcon, PhoneIcon, PinIcon } from './Icons';
+import { WaitBadge } from './WaitBadge';
+
+export function DetailModal({ facility, onClose }: { facility: Facility; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const flags = A11Y_FILTERS.filter((f) => facility.flags[f.key]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-0 backdrop-blur-sm sm:items-center sm:p-6"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Szczegóły placówki ${facility.provider}`}
+    >
+      <div
+        className="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-t-2xl bg-white dark:bg-slate-900 p-6 shadow-lift sm:rounded-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white">{facility.provider}</h2>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400 dark:text-slate-500">{facility.benefit}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Zamknij"
+            className="rounded-lg p-2 text-slate-400 dark:text-slate-500 transition hover:bg-slate-100 dark:hover:bg-slate-800 dark:bg-slate-800 hover:text-slate-700 dark:text-slate-200"
+          >
+            <CloseIcon />
+          </button>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <WaitBadge days={facility.days} size="lg" />
+          <span className="text-sm text-slate-500 dark:text-slate-400 dark:text-slate-500">
+            {facility.waitLabel ? `PCUS wg NFZ: ${facility.waitLabel}` : 'brak prognozy PCUS'}
+          </span>
+        </div>
+
+        <dl className="mt-6 grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
+          <div>
+            <dt className="text-xs font-medium tracking-wide text-slate-400 dark:text-slate-500 uppercase">Adres</dt>
+            <dd className="mt-1 flex items-start gap-1.5 text-sm text-slate-800 dark:text-slate-100">
+              <PinIcon className="mt-0.5 h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" />
+              <span>
+                {facility.address || '—'}
+                <br />
+                {facility.locality}, woj. {facility.provinceName}
+              </span>
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium tracking-wide text-slate-400 dark:text-slate-500 uppercase">Telefon</dt>
+            <dd className="mt-1 text-sm">
+              {facility.phone ? (
+                <a
+                  href={`tel:${facility.phone.replace(/\s/g, '')}`}
+                  className="inline-flex items-center gap-1.5 font-medium text-brand-700 hover:underline"
+                >
+                  <PhoneIcon className="h-4 w-4" /> {facility.phone}
+                </a>
+              ) : (
+                '—'
+              )}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium tracking-wide text-slate-400 dark:text-slate-500 uppercase">Osoby w kolejce</dt>
+            <dd className="mt-1 text-sm text-slate-800 dark:text-slate-100">{formatAwaiting(facility.awaiting)}</dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium tracking-wide text-slate-400 dark:text-slate-500 uppercase">
+              Szacowany czas oczekiwania
+            </dt>
+            <dd className="mt-1 text-sm text-slate-800 dark:text-slate-100">
+              {facility.days === null ? 'brak danych' : formatDaysLong(facility.days)}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium tracking-wide text-slate-400 dark:text-slate-500 uppercase">
+              Statystyki oddziału z miesiąca
+            </dt>
+            <dd className="mt-1 text-sm text-slate-800 dark:text-slate-100">{facility.statsUpdate ?? '—'}</dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium tracking-wide text-slate-400 dark:text-slate-500 uppercase">
+              Stan danych na dzień
+            </dt>
+            <dd className="mt-1 text-sm text-slate-800 dark:text-slate-100">{facility.situationAsAt ?? '—'}</dd>
+          </div>
+        </dl>
+
+        <h3 className="mt-6 text-sm font-semibold text-slate-900 dark:text-white">Dostępność architektoniczna</h3>
+        {flags.length > 0 ? (
+          <ul className="mt-2 flex flex-wrap gap-1.5">
+            {flags.map((f) => (
+              <li key={f.key} className="rounded-md bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700 dark:bg-brand-500/10 dark:text-brand-300">
+                {f.label}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400 dark:text-slate-500">Brak zadeklarowanych udogodnień w bazie NFZ.</p>
+        )}
+
+        <div className="mt-6 rounded-xl bg-slate-50 dark:bg-slate-800/50 p-4 text-xs leading-relaxed text-slate-500 dark:text-slate-400 dark:text-slate-500">
+          Dane pochodzą z oficjalnego API NFZ „Terminy Leczenia” i są aktualizowane miesięcznie — przed
+          wizytą potwierdź dostępność telefonicznie. Aplikacja nie stanowi porady medycznej.
+        </div>
+      </div>
+    </div>
+  );
+}

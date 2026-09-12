@@ -1,0 +1,437 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { fetchProvinceQueues } from './lib/api';
+import { toFacility } from './lib/wait';
+import { provinceName } from './lib/provinces';
+import { pushHistory, loadHistory, type HistoryItem } from './lib/history';
+import type { A11yKey, Facility, ProvinceData } from './lib/types';
+import { SearchPanel } from './components/SearchPanel';
+import { FacilityCard } from './components/FacilityCard';
+import { CompareChart, provinceStats } from './components/CompareChart';
+import { DetailModal } from './components/DetailModal';
+import { AiPanel } from './components/AiPanel';
+import { EmptyState, ErrorState, ResultsSkeleton } from './components/States';
+import { AboutSection, Footer, Header } from './components/Footer';
+import { modeFromUrl, paramsToState, sortFacilities, syncUrl, matchesA11y, DEFAULT_STATE, type AppMode, type SearchState } from './lib/search';
+import { CheckIcon, LinkIcon } from './components/Icons';
+import { FacilitiesView } from './components/FacilitiesView';
+import { ReportView } from './components/ReportView';
+import { MentalHealthView } from './components/MentalHealthView';
+import { TerminyMap } from './components/TerminyMap';
+
+// kolejność pobierania: najludniejsze województwa pierwsze (szybciej użyteczne wyniki)
+const FETCH_ORDER = ['07', '12', '15', '06', '01', '05', '11', '02', '16', '03', '09', '14', '13', '10', '04', '08'];
+const CLIENT_CONCURRENCY = 4;
+
+function sortProvinces(list: ProvinceData[]): ProvinceData[] {
+  const order = new Map(FETCH_ORDER.map((c, i) => [c, i]));
+  return [...list].sort((a, b) => (order.get(a.code) ?? 99) - (order.get(b.code) ?? 99));
+}
+export default function App() {
+  const [mode, setMode] = useState<AppMode>(() => modeFromUrl(location.search));
+  const modeRef = useRef<AppMode>(modeFromUrl(location.search));
+  const [state, setState] = useState<SearchState>(() => paramsToState(location.search));
+  const [provinces, setProvinces] = useState<ProvinceData[]>([]);
+  const [targetsTotal, setTargetsTotal] = useState(0);
+  const [targetsDone, setTargetsDone] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [selected, setSelected] = useState<Facility | null>(null);
+  const [history, setHistory] = useState<HistoryItem[]>(() => loadHistory());
+  const startedFor = useRef<string>('');
+  const provincesRef = useRef<ProvinceData[]>([]);
+  provincesRef.current = provinces;
+
+  const runSearch = useCallback(
+    async (benefit: string, kase: 1 | 2, locality: string, province: string) => {
+      if (benefit.length < 3) return;
+      const key = `${benefit}:${kase}:${locality}:${province}`;
+      startedFor.current = key;
+      setLoading(true);
+      setError(null);
+      setProvinces([]);
+      setTargetsDone(0);
+
+      const targets = province === 'all' ? FETCH_ORDER : [province];
+      setTargetsTotal(targets.length);
+      const queue = [...targets];
+
+      const worker = async () => {
+        while (queue.length > 0) {
+          if (startedFor.current !== key) return;
+          const code = queue.shift()!;
+          try {
+            const data = await fetchProvinceQueues(benefit, code, kase, locality);
+            if (startedFor.current !== key) return;
+            setHistory(pushHistory(benefit, locality));
+            setProvinces((prev) => sortProvinces([...prev.filter((p) => p.code !== code), data]));
+          } catch (err) {
+            if (startedFor.current !== key) return;
+            // województwo z błędem pomijamy, ale pokazujemy stan (0 rekordów)
+            setProvinces((prev) => [
+              ...prev.filter((p) => p.code !== code),
+              { code, name: provinceName(code), total: 0, records: [] },
+            ]);
+          }
+          if (startedFor.current !== key) return;
+          setTargetsDone((c) => c + 1);
+        }
+      };
+
+      await Promise.all(Array.from({ length: Math.min(CLIENT_CONCURRENCY, queue.length) }, worker));
+      if (startedFor.current === key) setLoading(false);
+    },
+    [],
+  );
+
+  // auto-start z URL (linki do wyników są współdzielone)
+  useEffect(() => {
+    if (state.benefit) void runSearch(state.benefit, state.kase, state.locality, state.province);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const update = (patch: Partial<SearchState>) => {
+    setState((prev) => {
+      const next = { ...prev, ...patch };
+      sync(next);
+      const refetch =
+        (patch.kase !== undefined && patch.kase !== prev.kase) ||
+        (patch.locality !== undefined && patch.locality !== prev.locality);
+      if (refetch && next.benefit) {
+        void runSearch(next.benefit, next.kase, next.locality, next.province);
+      }
+      // zmiana województwa: jeśli tego województwa nie mamy w danych, dociągnij je (z bazy lub NFZ)
+      if (
+        patch.province !== undefined &&
+        patch.province !== prev.province &&
+        next.benefit &&
+        patch.province !== 'all' &&
+        !provincesRef.current.some((p) => p.code === patch.province)
+      ) {
+        void runSearch(next.benefit, next.kase, next.locality, patch.province);
+      }
+      return next;
+    });
+  };
+
+  const search = (benefit: string, locality?: string) => {
+    const next = { ...state, benefit, ...(locality !== undefined ? { locality } : {}) };
+    setState(next);
+    sync(next);
+    setHistory(pushHistory(benefit, next.locality));
+    void runSearch(benefit, next.kase, next.locality, next.province);
+  };
+
+  /** Zmiana zakładki: wpis do historii (wstecz działa), tryb ląduje w URL. */
+  const goMode = (m: AppMode) => {
+    modeRef.current = m;
+    setMode(m);
+    const p = new URLSearchParams(location.search);
+    if (m === 'terminy') p.delete('mode');
+    else p.set('mode', m);
+    const qs = p.toString();
+    window.history.pushState(null, '', `${location.pathname}${qs ? `?${qs}` : ''}`);
+    window.scrollTo({ top: 0 });
+  };
+  const sync = (s: SearchState) => syncUrl(s, modeRef.current);
+  // wstecz/dalej w przeglądarce: odtwórz tryb i stan z URL
+  useEffect(() => {
+    const onPop = () => {
+      const m = modeFromUrl(location.search);
+      modeRef.current = m;
+      setMode(m);
+      const next = paramsToState(location.search);
+      setState(next);
+      if (next.benefit) void runSearch(next.benefit, next.kase, next.locality, next.province);
+      window.scrollTo({ top: 0 });
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [runSearch]);
+
+  const geoResolve = useCallback(
+    (updates: { id: string; lat: number; lon: number }[] | { id: string }[]) => {
+      setProvinces((prev) =>
+        prev.map((p) => ({
+          ...p,
+          records: p.records.map((rec) => {
+            const attrs = (rec.attributes ?? {}) as Record<string, unknown>;
+            const rid =
+              (rec.id as string | undefined) ??
+              `${attrs['provider']}|${attrs['address']}|${attrs['benefit']}`;
+            const hit = updates.find((u) => u.id === rid);
+            if (!hit) return rec;
+            const point = hit as { id: string; lat?: number; lon?: number };
+            if (typeof point.lat === 'number' && typeof point.lon === 'number') {
+              return {
+                ...rec,
+                attributes: { ...attrs, latitude: point.lat, longitude: point.lon },
+              };
+            }
+            return { ...rec, attributes: { ...attrs, latitude: null, longitude: null } };
+          }),
+        })),
+      );
+    },
+    [],
+  );
+
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(location.href);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* brak uprawnień — URL i tak jest w pasku adresu */
+    }
+  };
+
+  const facilities = useMemo<Facility[]>(() => {
+    if (provinces.length === 0) return [];
+    const out: Facility[] = [];
+    for (const p of provinces) {
+      if (state.province !== 'all' && p.code !== state.province) continue;
+      for (const rec of p.records) {
+        const f = toFacility(rec, p.code, p.name);
+        if (f && matchesA11y(f, state.a11y as A11yKey[])) out.push(f);
+      }
+    }
+    return sortFacilities(out, state.sort);
+  }, [provinces, state.province, state.a11y, state.sort]);
+
+  const stats = useMemo(() => provinceStats(facilities), [facilities]);
+
+  const medianDays = useMemo(() => {
+    const d = facilities.map((f) => f.days).filter((x): x is number => x !== null).sort((a, b) => a - b);
+    if (d.length === 0) return null;
+    const mid = Math.floor(d.length / 2);
+    return d.length % 2 ? d[mid] : Math.round((d[mid - 1] + d[mid]) / 2);
+  }, [facilities]);
+
+  const started = Boolean(state.benefit) && (loading || provinces.length > 0 || error !== null);
+
+  return (
+    <div className="flex min-h-screen flex-col">
+      <Header
+        mode={mode}
+        onMode={goMode}
+        onHome={() => {
+          modeRef.current = 'terminy';
+          setMode('terminy');
+          setState(DEFAULT_STATE);
+          setProvinces([]);
+          setTargetsDone(0);
+          setTargetsTotal(0);
+          setError(null);
+          syncUrl(DEFAULT_STATE, 'terminy');
+          window.scrollTo({ top: 0 });
+        }}
+      />
+      <main className="flex-1">
+        {mode === 'raport' ? (
+          <ReportView />
+        ) : mode === 'placowki' ? (
+          <FacilitiesView />
+        ) : mode === 'wsparcie' ? (
+          <MentalHealthView
+            onCheckQueues={(benefit) => {
+              goMode('terminy');
+              search(benefit);
+            }}
+          />
+        ) : (
+          <>
+        {!started ? (
+          <section className="mx-auto flex max-w-3xl flex-col items-center px-4 pt-16 pb-10 text-center sm:pt-24">
+            <h1 className="text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white sm:text-5xl">
+              Gdzie do <span className="text-brand-600">specjalisty</span> najszybciej?
+            </h1>
+            <p className="mt-4 max-w-xl text-lg text-slate-500 dark:text-slate-400 dark:text-slate-500">
+              Porównujemy <strong>oficjalne czasy oczekiwania NFZ</strong> w 16 województwach. Wpisz
+              specjalizację i zobacz, gdzie kolejka jest najkrótsza — z filtrem dostępności i doradcą AI.
+            </p>
+            <div className="mt-8 flex w-full justify-center">
+              <SearchPanel
+                benefit={state.benefit}
+                locality={state.locality}
+                province={state.province}
+                kase={state.kase}
+                a11y={state.a11y}
+                sort={state.sort}
+                hero
+                onChange={update}
+                onSubmit={search}
+              />
+            </div>
+            {history.length > 0 && (
+              <div className="mt-5 flex flex-wrap items-center justify-center gap-1.5">
+                <span className="text-xs text-slate-500 dark:text-slate-400">Ostatnio szukane:</span>
+                {history.map((h) => (
+                  <button
+                    key={`${h.benefit}|${h.locality}`}
+                    type="button"
+                    onClick={() => search(h.benefit, h.locality)}
+                    className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600 shadow-card transition hover:border-brand-300 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-brand-500"
+                  >
+                    {h.benefit}
+                    {h.locality ? ` · ${h.locality}` : ''}
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
+        ) : (
+          <section className="mx-auto max-w-6xl px-4 pt-6">
+            <SearchPanel
+              benefit={state.benefit}
+              locality={state.locality}
+              province={state.province}
+              kase={state.kase}
+              a11y={state.a11y}
+              sort={state.sort}
+              onChange={update}
+              onSubmit={search}
+            />
+          </section>
+        )}
+
+        {started && (
+          <section className="mx-auto max-w-6xl px-4 pt-6 pb-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+                  „{state.benefit}"
+                  <span className="ml-2 text-sm font-normal text-slate-500 dark:text-slate-400 dark:text-slate-500">
+                    {state.locality ? state.locality : state.province === 'all' ? 'cała Polska' : `woj. ${provinceName(state.province)}`}
+                    {state.kase === 2 && ' • przypadek pilny'}
+                  </span>
+                </h2>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  {loading && facilities.length === 0
+                    ? 'pobieram dane…'
+                    : `${facilities.length} placówek`}
+                  {state.a11y.length > 0 && ` (po filtrze dostępności)`} ·{" "}
+                  <abbr title="Prognozowany Czas Udzielenia Świadczenia — statystyka NFZ, aktualizowana miesięcznie" className="underline decoration-dotted">
+                    PCUS
+                  </abbr>
+                  {medianDays !== null && !loading && (
+                    <>
+                      {' · '}
+                      <strong className="text-slate-700 dark:text-slate-200">
+                        mediana oczekiwania: {medianDays} dni
+                      </strong>
+                    </>
+                  )}
+                  {loading && targetsTotal > 1 && (
+                    <span className="ml-2 inline-flex items-center gap-1.5 rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-700 dark:bg-brand-500/10 dark:text-brand-300">
+                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-brand-500" />
+                      dane NFZ: {targetsDone}/{targetsTotal} województw
+                    </span>
+                  )}
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={copyLink}
+                  title="Skopiuj link do tych wyników"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 shadow-card transition hover:border-brand-300 hover:text-brand-700"
+                >
+                  {copied ? <CheckIcon className="h-4 w-4 text-brand-600" /> : <LinkIcon className="h-4 w-4" />}
+                  {copied ? 'Skopiowano' : 'Kopiuj link'}
+                </button>
+                <div className="flex rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-1 shadow-card" role="tablist" aria-label="Widok">
+                  {(['ranking', 'mapa', 'compare'] as const).map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      role="tab"
+                      aria-selected={state.view === v}
+                      onClick={() => update({ view: v })}
+                      className={`rounded-lg px-4 py-1.5 text-sm font-medium transition ${
+                        state.view === v ? 'bg-brand-600 text-white' : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:text-white'
+                      }`}
+                    >
+                      {v === 'ranking' ? 'Ranking' : v === 'mapa' ? 'Mapa' : 'Porównanie województw'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {loading && provinces.length === 0 && (
+              <div className="mt-6 space-y-3">
+                <p className="rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-800 dark:border-brand-800 dark:bg-brand-900/30 dark:text-brand-200">
+                  Pobieram statystyki z oddziałów NFZ — pierwsze wyniki pojawią się za chwilę
+                  {targetsTotal > 1 && ', reszta dołączy progresywnie'} (powtórne wyszukiwania są
+                  błyskawiczne — dane trzymamy w własnej bazie)…
+                </p>
+                <ResultsSkeleton />
+              </div>
+            )}
+
+            {!loading && error && (
+              <div className="mt-6">
+                <ErrorState
+                  message={error}
+                  onRetry={() => void runSearch(state.benefit, state.kase, state.locality, state.province)}
+                />
+              </div>
+            )}
+
+            {!loading && !error && targetsDone === targetsTotal && provinces.length > 0 && facilities.length === 0 && (
+              <div className="mt-6">
+                <EmptyState onPickHint={search} />
+              </div>
+            )}
+
+            {facilities.length > 0 && (
+              <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_360px]">
+                <div>
+                  {state.view === 'ranking' ? (
+                    <div className="space-y-3">
+                      {facilities.slice(0, 30).map((f, i) => (
+                        <FacilityCard key={f.id} facility={f} rank={i + 1} onDetails={setSelected} />
+                      ))}
+                      {facilities.length > 30 && (
+                        <p className="pt-2 text-center text-sm text-slate-400 dark:text-slate-500">
+                          Pokazuję 30 z {facilities.length} placówek — zawęź wyniki filtrem województwa lub
+                          dostępności.
+                        </p>
+                      )}
+                    </div>
+                  ) : state.view === 'mapa' ? (
+                    <TerminyMap
+                      facilities={facilities.slice(0, 100)}
+                      onResolve={geoResolve}
+                      mapKey={`${state.benefit}|${state.kase}|${state.locality}|${state.province}`}
+                    />
+                  ) : (
+                    <CompareChart
+                      stats={stats}
+                      selected={state.province}
+                      onSelect={(code) => update({ province: code ?? 'all' })}
+                      loadingProgress={loading && targetsTotal > 1 ? `${targetsDone}/${targetsTotal} woj.` : undefined}
+                    />
+                  )}
+                </div>
+                <aside className="lg:sticky lg:top-20 lg:self-start">
+                  <AiPanel benefit={state.benefit} facilities={facilities} />
+                </aside>
+              </div>
+            )}
+          </section>
+        )}
+          </>
+        )}
+
+        {mode === 'terminy' && <AboutSection />}
+      </main>
+
+      <Footer />
+
+      {selected && <DetailModal facility={selected} onClose={() => setSelected(null)} />}
+    </div>
+  );
+}
