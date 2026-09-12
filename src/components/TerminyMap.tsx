@@ -105,6 +105,7 @@ export function TerminyMap({
   useEffect(() => {
     let alive = true;
     void (async () => {
+      try {
       if (!containerRef.current) return;
       const L = await loadLeaflet();
       if (!alive || !containerRef.current) return;
@@ -137,6 +138,9 @@ export function TerminyMap({
     }
       if (bounds.length > 0) {
         if (mapKeyChanged(map, mapKey)) map.fitBounds(bounds, { padding: [40, 40], maxZoom: 12 });
+      }
+      } catch (err) {
+        console.error('[map] init/render failed:', err);
       }
     })();
     return () => {
