@@ -179,6 +179,15 @@ export function startSyncScheduler(): void {
   if (dbStats().benefits === 0) {
     log('pusta baza — pierwsza synchronizacja słownika w tle');
     triggerSync('benefits');
+  } else if (dbStats().snapshots > 0) {
+    // są snapshoty: przelicz agregaty lokalnie (tanie, zero zapytań do NFZ),
+    // żeby raport PL od pierwszego wejścia miał świeże nazwy/strukturę
+    log('przeliczam agregaty raportu z istniejących snapshotów');
+    try {
+      setSyncState('insights', JSON.stringify(computeInsights()));
+    } catch (e) {
+      console.error('[sync] boot insights failed:', e);
+    }
   }
 
   setInterval(

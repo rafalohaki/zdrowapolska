@@ -4,6 +4,7 @@
  */
 
 import { getSnapshots, trackedBenefits } from './db';
+import { PROVINCES } from './nfz';
 import { toFacility } from '../src/lib/wait';
 import type { Facility } from '../src/lib/types';
 
@@ -41,9 +42,10 @@ export function computeInsights(): InsightsReport {
   for (const { benefit, label } of REPORT_BENEFITS) {
     const snaps = getSnapshots(benefit, 1);
     const facilities: Facility[] = [];
+    const provName = (code: string) => PROVINCES.find((p) => p.code === code)?.name ?? code;
     for (const s of snaps) {
       for (const rec of s.records) {
-        const f = toFacility(rec as Record<string, unknown>, s.code, s.name);
+        const f = toFacility(rec as Record<string, unknown>, s.code, provName(s.code));
         if (f) facilities.push(f);
       }
     }

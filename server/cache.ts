@@ -114,6 +114,13 @@ export async function purgeKeys(prefix: string): Promise<number> {
   return removed;
 }
 
+// sweep pamięci co 5 min (chroni przed powolnym wzrostem przy długiej pracy)
+const sweep = setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of memory) if (v.expires <= now) memory.delete(k);
+}, 5 * 60 * 1000);
+sweep.unref?.();
+
 export function cacheStats() {
   return {
     entries: memory.size,

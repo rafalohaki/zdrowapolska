@@ -46,6 +46,21 @@ app.use(
   }),
 );
 
+// Nagłówki cache — middleware MUSI być zarejestrowany przed trasami
+// (w Hono handler trasy kończy łańcuch; middleware zarejestrowany później nie działa)
+app.use('/api/*', async (c, next) => {
+  await next();
+  if (c.req.method !== 'GET') return;
+  const path = c.req.path;
+  if (path.startsWith('/api/search') || path.startsWith('/api/insights')) {
+    c.header('Cache-Control', 'public, max-age=600');
+  } else if (path.startsWith('/api/compare') || path.startsWith('/api/localities') || path.startsWith('/api/benefits')) {
+    c.header('Cache-Control', 'public, max-age=300');
+  } else {
+    c.header('Cache-Control', 'no-store');
+  }
+});
+
 app.onError((err, c) => {
   console.error('[api]', err);
   return c.json({ error: err.message ?? 'Błąd serwera' }, 500);
@@ -199,18 +214,6 @@ app.get('/api/facilities', async (c) => {
   }
 });
 
-// Nagłówki cache dla odpowiedzi z cache'a serwera (oszczędza transfer przy powtórkach)
-app.use('/api/*', async (c, next) => {
-  await next();
-  if (c.req.method === 'GET') {
-    const path = c.req.path;
-    if (path.startsWith('/api/search') || path.startsWith('/api/insights')) {
-      c.header('Cache-Control', 'public, max-age=600');
-    } else if (path.startsWith('/api/compare') || path.startsWith('/api/localities') || path.startsWith('/api/benefits')) {
-      c.header('Cache-Control', 'public, max-age=300');
-    }
-  }
-});
 
 // Raport ogólnopolski (agregaty z lokalnej bazy snapshotów)
 app.get('/api/insights', (c) => {
@@ -258,6 +261,11 @@ app.post('/api/search/reindex', async (c) => {
 // Synchronizacja (scraper)
 app.get('/api/sync/status', (c) => c.json(getSyncStatus()));
 app.post('/api/sync/trigger', async (c) => {
+  // opcjonalna ochrona: ustaw SYNC_TOKEN, by obcy nie odpalali synchronizacji
+  const token = process.env.SYNC_TOKEN;
+  if (token && c.req.query('token') !== token) {
+    return c.json({ error: 'Nieprawidłowy token' }, 401);
+  }
   const body = (await c.req.json<{ scope?: string }>().catch(() => null)) ?? null;
   const raw = body?.scope ?? c.req.query('scope') ?? 'all';
   const scope: 'benefits' | 'queues' | 'all' =
