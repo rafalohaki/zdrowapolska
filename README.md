@@ -1,8 +1,17 @@
 # 🏥 ZdrowaPolska
 
+[![CI](https://github.com/rafalohaki/zdrowapolska/actions/workflows/ci.yml/badge.svg)](https://github.com/rafalohaki/zdrowapolska/actions/workflows/ci.yml)
+[License: MIT](LICENSE)
+
 **Gdzie do specjalisty najszybciej?** — porównywarka oficjalnych czasów oczekiwania NFZ ze wszystkich 16 oddziałów wojewódzkich, z filtrem dostępności architektonicznej i doradcą AI.
 
 > Kategorie HackYeah: **Sport & Healthcare** · **Artificial Intelligence**
+
+## 🖼️ Zrzuty ekranu
+
+| Ranking terminów (ciemny) | Mapa placówek | Raport ogólnopolski |
+|---|---|---|
+| ![Ranking](docs/screenshots/ranking.png) | ![Mapa](docs/screenshots/mapa.png) | ![Raport](docs/screenshots/raport.png) |
 
 ## ❗ Problem
 
