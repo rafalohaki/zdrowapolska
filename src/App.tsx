@@ -291,7 +291,7 @@ export default function App() {
               />
             </div>
             {history.length > 0 && (
-              <div className="mt-5 flex flex-wrap items-center justify-center gap-1.5">
+              <div id="history-chips" className="mt-5 flex flex-wrap items-center justify-center gap-1.5">
                 <span className="text-xs text-slate-500 dark:text-slate-400">Ostatnio szukane:</span>
                 {history.map((h) => (
                   <button

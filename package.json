@@ -15,7 +15,8 @@
     "deploy": "vite build && bunx wrangler deploy",
     "docker:build": "docker compose build",
     "docker:up": "docker compose up -d --build",
-    "docker:logs": "docker compose logs -f"
+    "docker:logs": "docker compose logs -f",
+    "prewarm": "bun scripts/prewarm-geocode.ts"
   },
   "dependencies": {
     "effect": "^4.0.0-rc.112",
