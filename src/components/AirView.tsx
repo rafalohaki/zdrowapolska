@@ -43,6 +43,13 @@ async function fetchAirByStation(id: number): Promise<AirData> {
   return (await res.json()) as AirData;
 }
 
+/** Fallback: wyszukiwanie po miejscowości — dla backendów bez obsługi station=. */
+async function fetchAirByLocality(loc: string): Promise<AirData> {
+  const res = await fetch(`${API_BASE}/api/air?locality=${encodeURIComponent(loc)}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return (await res.json()) as AirData;
+}
+
 export function AirView() {
   const [query, setQuery] = useState('Kraków');
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
@@ -57,7 +64,9 @@ export function AirView() {
     setQuery(st.name);
     setLoading(true);
     setError(null);
+    // stacja dokładna; gdy backend nie zna parametru station= — fallback na miejscowość
     fetchAirByStation(st.id)
+      .catch(() => fetchAirByLocality(st.city))
       .then(setData)
       .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Nieznany błąd'))
       .finally(() => setLoading(false));
