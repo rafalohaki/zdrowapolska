@@ -6,6 +6,7 @@
  */
 
 import { Data, Effect, Semaphore, Schedule } from 'effect';
+import { cached } from './cache';
 
 const BASE = 'https://api.gios.gov.pl/pjp-api/v1/rest';
 
@@ -69,23 +70,69 @@ function toStation(raw: RawStation): GiosStation | null {
 
 let stationsCache: { at: number; list: GiosStation[] } | null = null;
 
-/** Cała lista stacji (strony po 20) — cache 24 h w pamięci procesu. */
+/** Indeks + porada dla KONKRETNEJ stacji (po id z autouzupełniania). */
+export async function airForStation(stationId: number): Promise<{
+  station: GiosStation | null;
+  kategoria: string | null;
+  wartosc: number | null;
+  dataObliczen: string | null;
+  dataZrodlowa: string | null;
+  pollutants: AirPollutant[];
+  advice: string;
+}> {
+  const stations = await allStations();
+  const station = stations.find((st) => st.id === stationId) ?? null;
+  if (!station) {
+    return { station: null, kategoria: null, wartosc: null, dataObliczen: null, dataZrodlowa: null, pollutants: [], advice: 'Nie znaleziono stacji.' };
+  }
+  const idx = await Effect.runPromise(
+    giosJson<{ AqIndex?: Record<string, unknown> }>(`/aqindex/getIndex/${stationId}`),
+  ).catch(() => ({}) as AqIndexResponse);
+  const a = idx.AqIndex ?? {};
+  const pollutants: AirPollutant[] = [];
+  for (const [key, kategoria] of Object.entries(a)) {
+    if (!key.startsWith('Nazwa kategorii indeksu dla wskażnika ') || typeof kategoria !== 'string') continue;
+    const wskaznik = key.replace('Nazwa kategorii indeksu dla wskażnika ', '');
+    const wartosc = a[`Wartość indeksu dla wskaźnika ${wskaznik}`];
+    pollutants.push({ wskaznik, kategoria: typeof kategoria === 'string' ? kategoria : null, wartosc: typeof wartosc === 'number' ? wartosc : null });
+  }
+  const wartosc = typeof a['Wartość indeksu'] === 'number' ? (a['Wartość indeksu'] as number) : null;
+  const kategoria = typeof a['Nazwa kategorii indeksu'] === 'string' ? (a['Nazwa kategorii indeksu'] as string) : null;
+  return {
+    station,
+    kategoria,
+    wartosc,
+    dataObliczen: typeof a['Data wykonania obliczeń indeksu'] === 'string' ? (a['Data wykonania obliczeń indeksu'] as string) : null,
+    dataZrodlowa: typeof a['Data danych źródłowych, z których policzono wartość indeksu dla wskaźnika st'] === 'string' ? (a['Data danych źródłowych, z których policzono wartość indeksu dla wskaźnika st'] as string) : null,
+    pollutants,
+    advice: adviceFor(kategoria),
+  };
+}
+
+/** Cała lista stacji — cache 24 h (Redis + pamięć procesu), przeżywa restart kontenera. */
 export async function allStations(): Promise<GiosStation[]> {
   if (stationsCache && Date.now() - stationsCache.at < 24 * 60 * 60 * 1000) {
     return stationsCache.list;
   }
+  const list = await cached('gios:stations:all', 24 * 60 * 60 * 1000, fetchStationsFromGios);
+  stationsCache = { at: Date.now(), list };
+  return list;
+}
+
+async function fetchStationsFromGios(): Promise<GiosStation[]> {
   const pages = await Effect.runPromise(
     Effect.gen(function* () {
       const first = yield* giosJson<{ ['Lista stacji pomiarowych']: RawStation[]; totalPages: number }>(
         '/station/findAll',
       );
-      const pages: RawStation[][] = [first['Lista stacji pomiarowych'] ?? []];
       const totalPages = Math.min(Number(first.totalPages) || 1, 20);
-      for (let p = 2; p <= totalPages; p++) {
-        const next = yield* giosJson<{ ['Lista stacji pomiarowych']: RawStation[] }>(`/station/findAll?page=${p}`);
-        pages.push(next['Lista stacji pomiarowych'] ?? []);
-      }
-      return pages;
+      const rest = yield* Effect.all(
+        Array.from({ length: totalPages - 1 }, (_, i) =>
+          giosJson<{ ['Lista stacji pomiarowych']: RawStation[] }>(`/station/findAll?page=${i + 2}`),
+        ),
+        { concurrency: 4 },
+      );
+      return [first['Lista stacji pomiarowych'] ?? [], ...rest.map((r) => r['Lista stacji pomiarowych'] ?? [])];
     }),
   );
   const list = pages
@@ -136,6 +183,19 @@ export function adviceFor(kategoria: string | null): string {
 
 type AqIndexResponse = { AqIndex?: Record<string, unknown> };
 
+/** Stacje pasujące do miejscowości (do autouzupełniania) — z cache stacji. */
+export async function airStationsByLocality(localityRaw: string): Promise<
+  { id: number; name: string; city: string }[]
+> {
+  const q = normCity(localityRaw);
+  if (q.length < 3) return [];
+  const stations = await allStations();
+  return stations
+    .filter((st) => normCity(st.city).includes(q))
+    .slice(0, 8)
+    .map((st) => ({ id: st.id, name: st.name, city: st.city }));
+}
+
 export async function airForLocality(localityRaw: string): Promise<{
   query: string;
   matches: { id: number; name: string; city: string }[];
@@ -169,11 +229,17 @@ export async function airForLocality(localityRaw: string): Promise<{
     };
   }
 
-  const station = matches[0];
-  const idx = await Effect.runPromise(
-    giosJson<{ AqIndex?: Record<string, unknown> }>(`/aqindex/getIndex/${station.id}`),
-  ).catch(() => ({}) as AqIndexResponse);
-  const a = idx.AqIndex ?? {};
+  // pierwsza stacja bez indeksu (null) nie blokuje — próbujemy kolejne (max 3)
+  let station = matches[0];
+  let a: AqIndexResponse['AqIndex'] = {};
+  for (const cand of matches.slice(0, 3)) {
+    station = cand;
+    const idx = await Effect.runPromise(
+      giosJson<{ AqIndex?: Record<string, unknown> }>(`/aqindex/getIndex/${cand.id}`),
+    ).catch(() => ({}) as AqIndexResponse);
+    a = idx.AqIndex ?? {};
+    if (Object.keys(a).length > 0) break;
+  }
 
   const pollutants: AirPollutant[] = [];
   for (const [key, kategoria] of Object.entries(a)) {

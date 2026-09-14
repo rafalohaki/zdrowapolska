@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AlertIcon, PinIcon } from './Icons';
 
 const API_BASE =
@@ -29,33 +29,72 @@ function katDot(kat: string | null): string {
   return KAT_BG[kat ?? ''] ?? 'bg-slate-400';
 }
 
+type Suggestion = { id: number; name: string; city: string };
+
+async function fetchAirStations(q: string, signal: AbortSignal): Promise<Suggestion[]> {
+  const res = await fetch(`${API_BASE}/api/air-stations?locality=${encodeURIComponent(q)}`, { signal });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return ((await res.json()) as { items: Suggestion[] }).items ?? [];
+}
+
+async function fetchAirByStation(id: number): Promise<AirData> {
+  const res = await fetch(`${API_BASE}/api/air?station=${id}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return (await res.json()) as AirData;
+}
+
 export function AirView() {
-  const [locality, setLocality] = useState('Kraków');
+  const [query, setQuery] = useState('Kraków');
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [showSug, setShowSug] = useState(false);
   const [data, setData] = useState<AirData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [searched, setSearched] = useState(false);
+  const boxRef = useRef<HTMLDivElement>(null);
 
-  const run = (loc: string) => {
-    const q = loc.trim();
-    if (q.length < 3) return;
+  const loadStation = (st: Suggestion) => {
+    setShowSug(false);
+    setQuery(st.name);
     setLoading(true);
     setError(null);
-    setSearched(true);
-    fetch(`${API_BASE}/api/air?locality=${encodeURIComponent(q)}`)
-      .then(async (res) => {
-        if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? `HTTP ${res.status}`);
-        return (await res.json()) as AirData;
-      })
-      .then((d) => setData(d))
+    fetchAirByStation(st.id)
+      .then(setData)
       .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Nieznany błąd'))
       .finally(() => setLoading(false));
   };
 
-  // pierwsze dane od razu po wejściu
-  useState(() => {
-    run('Kraków');
-  });
+  // domyślnie Kraków — pierwszy ekran z danymi bez klikania
+  useEffect(() => {
+    loadStation({ id: 400, name: 'Kraków, Aleja Krasińskiego', city: 'Kraków' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // autouzupełnianie z debounce (stacje GIOŚ po mieście)
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 3) {
+      setSuggestions([]);
+      return;
+    }
+    const ctrl = new AbortController();
+    const t = setTimeout(() => {
+      fetchAirStations(q, ctrl.signal)
+        .then((r) => setShowSug(r.length > 0))
+        .catch(() => undefined);
+    }, 300);
+    return () => {
+      clearTimeout(t);
+      ctrl.abort();
+    };
+  }, [query]);
+
+  useEffect(() => {
+    const close = (e: MouseEvent) => {
+      if (!boxRef.current?.contains(e.target as Node)) setShowSug(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, []);
 
   return (
     <section className="mx-auto max-w-4xl px-4 pt-8 pb-4">
@@ -67,26 +106,50 @@ export function AirView() {
         Dane odświeżane co godzinę.
       </p>
 
-      <div className="mt-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-card">
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
-          <input
-            value={locality}
-            onChange={(e) => setLocality(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') run(locality);
-            }}
-            placeholder="Miejscowość, np. Kraków…"
-            aria-label="Miejscowość"
-            className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 text-sm shadow-card outline-none transition placeholder:text-slate-400 focus:border-brand-400"
-          />
-          <button
-            type="button"
-            onClick={() => run(locality)}
-            className="rounded-xl bg-brand-600 px-6 py-3 text-sm font-semibold text-white shadow-card transition hover:bg-brand-700"
-          >
-            Sprawdź
-          </button>
-        </div>
+      <div
+        ref={boxRef}
+        className="relative mt-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-card"
+      >
+        <label
+          htmlFor="air-input"
+          className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500"
+        >
+          Miejscowość
+        </label>
+        <input
+          id="air-input"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setShowSug(true);
+          }}
+          onFocus={() => setShowSug(true)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setShowSug(false);
+          }}
+          placeholder="Miejscowość, np. Kraków…"
+          aria-label="Miejscowość"
+          autoComplete="off"
+          className="mt-2 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 text-sm shadow-card outline-none transition placeholder:text-slate-400 focus:border-brand-400"
+        />
+        {showSug && query.trim().length >= 3 && suggestions.length > 0 && (
+          <ul className="absolute z-30 mt-1 max-h-64 w-full overflow-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 py-1 shadow-lift">
+            {suggestions.map((st) => (
+              <li key={st.id}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuery(st.name);
+                    loadStation(st);
+                  }}
+                  className="block w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-brand-50 dark:hover:bg-brand-900/30"
+                >
+                  {st.name}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       {loading && (
@@ -102,14 +165,8 @@ export function AirView() {
         </p>
       )}
 
-      {!loading && !error && searched && data && !data.station && (
-        <p className="mt-6 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 text-center text-sm text-slate-500 dark:text-slate-400 shadow-card">
-          Nie znaleziono stacji GIOŚ dla tej miejscowości — spróbuj większego miasta w okolicy.
-        </p>
-      )}
-
       {!loading && !error && data?.station && (
-        <div className="mt-6 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-card">
+        <div className="animate-fade-up mt-6 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-card">
           <div className="flex items-start gap-3">
             <span className={`mt-1 h-4 w-4 shrink-0 rounded-full ${katDot(data.kategoria)}`} />
             <div>
@@ -139,7 +196,7 @@ export function AirView() {
             </div>
           )}
 
-          <div className="mt-4 rounded-xl border border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-900/30 p-4 text-sm leading-relaxed text-brand-900 dark:text-brand-100">
+          <div className="mt-4 rounded-xl border border-brand-200 dark:border-brand-800 bg-brand-50 p-4 text-sm leading-relaxed text-brand-900 dark:border-brand-800 dark:bg-brand-900/30 dark:text-brand-100">
             <strong>Trening:</strong> {data.advice}
           </div>
 

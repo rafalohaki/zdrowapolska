@@ -50,14 +50,18 @@ app.use(
 // (w Hono handler trasy kończy łańcuch; middleware zarejestrowany później nie działa)
 app.use('/api/*', async (c, next) => {
   await next();
-  if (c.req.method !== 'GET') return;
+  if (c.req.method !== 'GET' || c.res.status >= 400) {
+    // błędów nigdy nie cache'ujemy (ani w CF, ani w przeglądarce)
+    c.header('Cache-Control', 'no-store');
+    return;
+  }
   const path = c.req.path;
   if (path.startsWith('/api/search') || path.startsWith('/api/insights')) {
     c.header('Cache-Control', 'public, max-age=600');
   } else if (path.startsWith('/api/compare') || path.startsWith('/api/localities') || path.startsWith('/api/benefits')) {
     c.header('Cache-Control', 'public, max-age=300');
   } else if (path.startsWith('/api/air')) {
-    c.header('Cache-Control', 'public, max-age=1800');
+    c.header('Cache-Control', 'public, max-age=900, stale-while-revalidate=300');
   } else {
     c.header('Cache-Control', 'no-store');
   }
@@ -217,13 +221,29 @@ app.get('/api/facilities', async (c) => {
 });
 
 
+// Autouzupełnianie miast dla widoku powietrza (z cache stacji, bez NFZ/GIOŚ w locie)
+app.get('/api/air-stations', async (c) => {
+  const locality = (c.req.query('locality') ?? '').trim();
+  if (locality.length < 3) return c.json({ items: [] });
+  const { airStationsByLocality } = await import('./air');
+  const items = await cached(`air-stations:${locality.toLowerCase()}`, 60 * 60 * 1000, () =>
+    airStationsByLocality(locality),
+  );
+  return c.json({ items });
+});
+
 // Jakość powietrza GIOŚ — „czy dziś bezpieczny trening?"
 app.get('/api/air', async (c) => {
   const locality = (c.req.query('locality') ?? '').trim();
+  const stationId = Number(c.req.query('station') ?? 0);
+  const { airForLocality, airForStation } = await import('./air');
+  if (stationId > 0) {
+    const data = await cached(`air:station:${stationId}`, 30 * 60 * 1000, () => airForStation(stationId));
+    return c.json(data);
+  }
   if (locality.length < 3) {
     return c.json({ error: 'Podaj miejscowość (min. 3 znaki)' }, 400);
   }
-  const { airForLocality } = await import('./air');
   const data = await cached(`air:${locality.toLowerCase()}`, 30 * 60 * 1000, () => airForLocality(locality));
   return c.json(data);
 });
