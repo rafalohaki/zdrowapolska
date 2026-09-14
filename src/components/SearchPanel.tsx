@@ -158,7 +158,7 @@ export function SearchPanel({
               aria-label="Szukaj świadczenia NFZ"
               aria-expanded={open}
               role="combobox"
-              aria-controls="benefit-listbox"
+              id="benefit-input" aria-controls="benefit-listbox"
               className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-3 pr-4 pl-11 text-base shadow-card outline-none transition placeholder:text-slate-400 dark:text-slate-500 focus:border-brand-400"
             />
             {loadingDict && (
@@ -247,6 +247,7 @@ export function SearchPanel({
 
           <button
             type="button"
+            id="szukaj-btn"
             onClick={submit}
             className="rounded-xl bg-brand-600 px-6 py-3 text-base font-semibold text-white shadow-card transition hover:bg-brand-700 active:scale-[0.98]"
           >

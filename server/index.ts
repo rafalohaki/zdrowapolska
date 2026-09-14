@@ -56,6 +56,8 @@ app.use('/api/*', async (c, next) => {
     c.header('Cache-Control', 'public, max-age=600');
   } else if (path.startsWith('/api/compare') || path.startsWith('/api/localities') || path.startsWith('/api/benefits')) {
     c.header('Cache-Control', 'public, max-age=300');
+  } else if (path.startsWith('/api/air')) {
+    c.header('Cache-Control', 'public, max-age=1800');
   } else {
     c.header('Cache-Control', 'no-store');
   }
@@ -214,6 +216,17 @@ app.get('/api/facilities', async (c) => {
   }
 });
 
+
+// Jakość powietrza GIOŚ — „czy dziś bezpieczny trening?"
+app.get('/api/air', async (c) => {
+  const locality = (c.req.query('locality') ?? '').trim();
+  if (locality.length < 3) {
+    return c.json({ error: 'Podaj miejscowość (min. 3 znaki)' }, 400);
+  }
+  const { airForLocality } = await import('./air');
+  const data = await cached(`air:${locality.toLowerCase()}`, 30 * 60 * 1000, () => airForLocality(locality));
+  return c.json(data);
+});
 
 // Raport ogólnopolski (agregaty z lokalnej bazy snapshotów)
 app.get('/api/insights', (c) => {

@@ -19,7 +19,7 @@ function ThemeToggle() {
   return (
     <button
       type="button"
-      onClick={toggle}
+      id="theme-toggle" onClick={toggle}
       aria-label={dark ? 'Włącz tryb jasny' : 'Włącz tryb ciemny'}
       className="rounded-lg border border-slate-200 p-2 text-slate-500 transition hover:border-brand-300 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-brand-500"
     >
@@ -49,7 +49,7 @@ export function Header({
         <nav className="flex items-center gap-4 text-sm font-medium text-slate-600 dark:text-slate-300">
           <button
             type="button"
-            onClick={() => onMode('terminy')}
+            id="nav-terminy" onClick={() => onMode('terminy')}
             className={`hidden transition sm:block ${
               mode === 'terminy' ? 'text-brand-700 dark:text-brand-400' : 'hover:text-brand-700 dark:hover:text-brand-400'
             }`}
@@ -58,7 +58,7 @@ export function Header({
           </button>
           <button
             type="button"
-            onClick={() => onMode('raport')}
+            id="nav-raport" onClick={() => onMode('raport')}
             className={`hidden transition md:block ${
               mode === 'raport' ? 'text-brand-700 dark:text-brand-400' : 'hover:text-brand-700 dark:hover:text-brand-400'
             }`}
@@ -67,7 +67,7 @@ export function Header({
           </button>
           <button
             type="button"
-            onClick={() => onMode('wsparcie')}
+            id="nav-wsparcie" onClick={() => onMode('wsparcie')}
             className={`transition ${
               mode === 'wsparcie' ? 'text-brand-700 dark:text-brand-400' : 'hover:text-brand-700 dark:hover:text-brand-400'
             }`}
@@ -76,7 +76,16 @@ export function Header({
           </button>
           <button
             type="button"
-            onClick={() => onMode('placowki')}
+            onClick={() => onMode('powietrze')}
+            className={`hidden transition md:block ${
+              mode === 'powietrze' ? 'text-brand-700 dark:text-brand-400' : 'hover:text-brand-700 dark:hover:text-brand-400'
+            }`}
+          >
+            Jakość powietrza
+          </button>
+          <button
+            type="button"
+            id="nav-placowki" onClick={() => onMode('placowki')}
             className={`transition ${
               mode === 'placowki' ? 'text-brand-700 dark:text-brand-400' : 'hover:text-brand-700 dark:hover:text-brand-400'
             }`}

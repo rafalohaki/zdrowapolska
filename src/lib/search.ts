@@ -1,11 +1,12 @@
 import type { A11yKey, Facility, SortKey } from './types';
 
-export type AppMode = 'terminy' | 'placowki' | 'raport' | 'wsparcie';
+export type AppMode = 'terminy' | 'placowki' | 'raport' | 'wsparcie' | 'powietrze';
 
 export function modeFromUrl(search: string): AppMode {
   if (search.includes('mode=wsparcie')) return 'wsparcie';
   if (search.includes('mode=placowki')) return 'placowki';
   if (search.includes('mode=raport')) return 'raport';
+  if (search.includes('mode=powietrze')) return 'powietrze';
   return 'terminy';
 }
 export type SearchState = {

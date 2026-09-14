@@ -13,14 +13,26 @@ import { EmptyState, ErrorState, ResultsSkeleton } from './components/States';
 import { AboutSection, Footer, Header } from './components/Footer';
 import { modeFromUrl, paramsToState, sortFacilities, syncUrl, matchesA11y, DEFAULT_STATE, type AppMode, type SearchState } from './lib/search';
 import { CheckIcon, LinkIcon } from './components/Icons';
-import { FacilitiesView } from './components/FacilitiesView';
-import { ReportView } from './components/ReportView';
-import { MentalHealthView } from './components/MentalHealthView';
+import { lazy, Suspense } from 'react';
+
+// code-splitting: widoki trybów ładowane na żądanie (mniejszy bundle startowy)
+const FacilitiesView = lazy(() => import('./components/FacilitiesView').then((m) => ({ default: m.FacilitiesView })));
+const ReportView = lazy(() => import('./components/ReportView').then((m) => ({ default: m.ReportView })));
+const MentalHealthView = lazy(() => import('./components/MentalHealthView').then((m) => ({ default: m.MentalHealthView })));
+const AirView = lazy(() => import('./components/AirView').then((m) => ({ default: m.AirView })));
 import { TerminyMap } from './components/TerminyMap';
 
 // kolejność pobierania: najludniejsze województwa pierwsze (szybciej użyteczne wyniki)
 const FETCH_ORDER = ['07', '12', '15', '06', '01', '05', '11', '02', '16', '03', '09', '14', '13', '10', '04', '08'];
 const CLIENT_CONCURRENCY = 4;
+
+function PageLoader() {
+  return (
+    <div className="flex min-h-[50vh] items-center justify-center" role="status" aria-busy="true">
+      <span className="h-8 w-8 animate-spin rounded-full border-4 border-brand-200 border-t-brand-600" />
+    </div>
+  );
+}
 
 function sortProvinces(list: ProvinceData[]): ProvinceData[] {
   const order = new Map(FETCH_ORDER.map((c, i) => [c, i]));
@@ -126,11 +138,16 @@ export default function App() {
   const goMode = (m: AppMode) => {
     modeRef.current = m;
     setMode(m);
-    const p = new URLSearchParams(location.search);
-    if (m === 'terminy') p.delete('mode');
-    else p.set('mode', m);
-    const qs = p.toString();
-    window.history.pushState(null, '', `${location.pathname}${qs ? `?${qs}` : ''}`);
+    if (m === 'terminy') {
+      // powrót do terminów: parametry wyszukiwania zostają (stan w state)
+      const p = new URLSearchParams(location.search);
+      p.delete('mode');
+      const qs = p.toString();
+      window.history.pushState(null, '', `${location.pathname}${qs ? `?${qs}` : ''}`);
+    } else {
+      // inne tryby: parametry b/v/p/a/s są bez sensu — czysty ?mode=X
+      window.history.pushState(null, '', `${location.pathname}?mode=${m}`);
+    }
     window.scrollTo({ top: 0 });
   };
   const sync = (s: SearchState) => syncUrl(s, modeRef.current);
@@ -229,16 +246,26 @@ export default function App() {
       />
       <main className="flex-1">
         {mode === 'raport' ? (
-          <ReportView />
+          <Suspense fallback={<PageLoader />}>
+            <ReportView />
+          </Suspense>
         ) : mode === 'placowki' ? (
-          <FacilitiesView />
+          <Suspense fallback={<PageLoader />}>
+            <FacilitiesView />
+          </Suspense>
+        ) : mode === 'powietrze' ? (
+          <Suspense fallback={<PageLoader />}>
+            <AirView />
+          </Suspense>
         ) : mode === 'wsparcie' ? (
-          <MentalHealthView
-            onCheckQueues={(benefit) => {
-              goMode('terminy');
-              search(benefit);
-            }}
-          />
+          <Suspense fallback={<PageLoader />}>
+            <MentalHealthView
+              onCheckQueues={(benefit) => {
+                goMode('terminy');
+                search(benefit);
+              }}
+            />
+          </Suspense>
         ) : (
           <>
         {!started ? (
