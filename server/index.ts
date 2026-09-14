@@ -244,7 +244,8 @@ app.get('/api/air', async (c) => {
   if (locality.length < 3) {
     return c.json({ error: 'Podaj miejscowość (min. 3 znaki)' }, 400);
   }
-  const data = await cached(`air:${locality.toLowerCase()}`, 30 * 60 * 1000, () => airForLocality(locality));
+  // bez cached(): puste wyniki dla nietrafionych zapytań nie mogą zatruwać cache'a
+  const data = await airForLocality(locality);
   return c.json(data);
 });
 

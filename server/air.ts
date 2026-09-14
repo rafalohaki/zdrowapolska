@@ -191,7 +191,7 @@ export async function airStationsByLocality(localityRaw: string): Promise<
   if (q.length < 3) return [];
   const stations = await allStations();
   return stations
-    .filter((st) => normCity(st.city).includes(q))
+    .filter((st) => normCity(st.city).includes(q) || normCity(st.name).includes(q))
     .slice(0, 8)
     .map((st) => ({ id: st.id, name: st.name, city: st.city }));
 }
@@ -212,7 +212,8 @@ export async function airForLocality(localityRaw: string): Promise<{
   const stations = await allStations();
   const matches = stations.filter((st) => {
     const c = normCity(st.city);
-    return c.includes(locality) || locality.includes(c);
+    const n = normCity(st.name);
+    return c.includes(locality) || locality.includes(c) || n.includes(locality);
   });
   if (matches.length === 0) {
     return {
@@ -229,7 +230,8 @@ export async function airForLocality(localityRaw: string): Promise<{
     };
   }
 
-  // pierwsza stacja bez indeksu (null) nie blokuje — próbujemy kolejne (max 3)
+  // pierwsza stacja bez indeksu nie blokuje — próbujemy kolejne (max 3),
+  // aż znajdziemy stację z policzoną kategorią indeksu
   let station = matches[0];
   let a: AqIndexResponse['AqIndex'] = {};
   for (const cand of matches.slice(0, 3)) {
@@ -238,7 +240,7 @@ export async function airForLocality(localityRaw: string): Promise<{
       giosJson<{ AqIndex?: Record<string, unknown> }>(`/aqindex/getIndex/${cand.id}`),
     ).catch(() => ({}) as AqIndexResponse);
     a = idx.AqIndex ?? {};
-    if (Object.keys(a).length > 0) break;
+    if (a['Nazwa kategorii indeksu']) break;
   }
 
   const pollutants: AirPollutant[] = [];
