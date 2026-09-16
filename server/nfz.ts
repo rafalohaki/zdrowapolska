@@ -47,15 +47,19 @@ const pace = Effect.gen(function* () {
 
 function requestEffect(url: string) {
   return Effect.gen(function* () {
-    yield* pace;
+    // pace WEWNĄTRZ semafora: poza nim sleep'y biegną równolegle, więc kolejne
+    // żądania mogły odpalać bez żadnego odstępu (MIN_INTERVAL nie działał)
     const res = yield* semaphore.withPermits(1)(
-      Effect.tryPromise({
-        try: (signal) =>
-          fetch(url, {
-            headers: { Accept: 'application/json' },
-            signal: AbortSignal.any([signal, AbortSignal.timeout(TIMEOUT_MS)]),
-          }),
-        catch: (cause) => new NfzNetwork({ cause: String(cause) }),
+      Effect.gen(function* () {
+        yield* pace;
+        return yield* Effect.tryPromise({
+          try: (signal) =>
+            fetch(url, {
+              headers: { Accept: 'application/json' },
+              signal: AbortSignal.any([signal, AbortSignal.timeout(TIMEOUT_MS)]),
+            }),
+          catch: (cause) => new NfzNetwork({ cause: String(cause) }),
+        });
       }),
     );
 

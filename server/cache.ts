@@ -70,6 +70,8 @@ export async function cached<T>(key: string, ttlMs: number, loader: () => Promis
     if (memory.size > 500) {
       // sprzątanie wygasłych wpisów pamięci
       for (const [k, v] of memory) if (v.expires < Date.now()) memory.delete(k);
+      // twardy limit: gdy same żywe wpisy przekraczają 1000, wywalaj najstarsze (FIFO po Map)
+      while (memory.size > 1000) memory.delete(memory.keys().next().value as string);
     }
     await redisSet(key, serialized, Math.ceil(ttlMs / 1000));
     return value;
@@ -93,18 +95,13 @@ export async function purgeKeys(prefix: string): Promise<number> {
   try {
     let cursor = '0';
     do {
-      const res = (await (r as unknown as { send: (cmd: string, ...args: string[]) => Promise<[string, string[]]> }).send(
-        'SCAN',
-        cursor,
-        'MATCH',
-        `${prefix}*`,
-        'COUNT',
-        '500',
-      )) as [string, string[]];
-      cursor = res[0];
-      if (res[1].length) {
-        await r.del(...res[1]);
-        removed += res[1].length;
+      // dedykowana metoda scan() — send() przyjmuje args jako TABLICĘ
+      // (send('SCAN', cursor, ...) przekazywałby kursor zamiast listy argumentów)
+      const [next, keys] = await r.scan(cursor, 'MATCH', `${prefix}*`, 'COUNT', 500);
+      cursor = next;
+      if (keys.length) {
+        await r.del(...keys);
+        removed += keys.length;
       }
     } while (cursor !== '0');
   } catch {

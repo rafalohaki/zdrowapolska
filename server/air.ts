@@ -15,28 +15,27 @@ export class GiosError extends Data.TaggedError('GiosError')<{ readonly cause: s
 const semaphore = Effect.runSync(Semaphore.make(1));
 
 function giosJson<T>(path: string) {
-  return Effect.gen(function* () {
-    yield* Effect.sleep('150 millis');
-    return yield* semaphore.withPermits(1)(
-      Effect.tryPromise({
+  return semaphore.withPermits(1)(
+    Effect.gen(function* () {
+      // sleep wewnątrz semafora — realny odstęp między żądaniami (wcześniej
+      // równoległe sleep'y przy concurrency:4 nie dawały żadnego pacingu)
+      yield* Effect.sleep('150 millis');
+      const res = yield* Effect.tryPromise({
         try: (signal) =>
           fetch(`${BASE}${path}`, {
             signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]),
           }),
         catch: (cause) => new GiosError({ cause: String(cause) }),
-      }).pipe(
-        Effect.flatMap((res) =>
-          res.ok
-            ? Effect.tryPromise({
-                try: () => res.json() as Promise<T>,
-                catch: (cause) => new GiosError({ cause: String(cause) }),
-              })
-            : Effect.fail(new GiosError({ cause: `GIOŚ ${res.status} dla ${path}` })),
-        ),
-        Effect.retry({ times: 2, schedule: Schedule.spaced('2 seconds') }),
-      ),
-    );
-  });
+      });
+      if (!res.ok) return yield* Effect.fail(new GiosError({ cause: `GIOŚ ${res.status} dla ${path}` }));
+      return yield* Effect.tryPromise({
+        try: () => res.json() as Promise<T>,
+        catch: (cause) => new GiosError({ cause: String(cause) }),
+      });
+    }).pipe(
+      Effect.retry({ times: 2, schedule: Schedule.spaced('2 seconds') }),
+    ),
+  );
 }
 
 export type GiosStation = {
@@ -210,11 +209,17 @@ export async function airForLocality(localityRaw: string): Promise<{
 }> {
   const locality = normCity(localityRaw);
   const stations = await allStations();
-  const matches = stations.filter((st) => {
-    const c = normCity(st.city);
-    const n = normCity(st.name);
-    return c.includes(locality) || locality.includes(c) || n.includes(locality);
-  });
+  // pusta fraza po normalizacji ("!!!" → "") NIE może dopasować niczego —
+  // ''.includes() zawsze prawdziwe i zwróciłoby pierwszą stację z listy
+  const matches =
+    locality.length === 0
+      ? []
+      : stations.filter((st) => {
+          const c = normCity(st.city);
+          const n = normCity(st.name);
+          // puste miasto stacji (c='') też łapało wszystko przez includes('')
+          return c.includes(locality) || (c.length > 0 && locality.includes(c)) || n.includes(locality);
+        });
   if (matches.length === 0) {
     return {
       query: localityRaw,
@@ -258,12 +263,15 @@ export async function airForLocality(localityRaw: string): Promise<{
   const wartosc = typeof a['Wartość indeksu'] === 'number' ? (a['Wartość indeksu'] as number) : null;
   const kategoria = typeof a['Nazwa kategorii indeksu'] === 'string' ? (a['Nazwa kategorii indeksu'] as string) : null;
 
+  // pozostałe dopasowane stacje (bez wybranej) — jedna lista dla matches i alternatives
+  const others = matches
+    .filter((m) => m.id !== station.id)
+    .slice(0, 4)
+    .map((m) => ({ id: m.id, name: m.name, city: m.city }));
+
   return {
     query: localityRaw,
-    matches: stations
-      .filter((st) => normCity(st.city).includes(locality))
-      .slice(1, 4)
-      .map((m) => ({ id: m.id, name: m.name, city: m.city })),
+    matches: others,
     station,
     kategoria,
     wartosc,
@@ -277,6 +285,6 @@ export async function airForLocality(localityRaw: string): Promise<{
         : null,
     pollutants,
     advice: adviceFor(kategoria),
-    alternatives: matches.slice(1, 4).map((m) => ({ id: m.id, name: m.name, city: m.city })),
+    alternatives: others,
   };
 }

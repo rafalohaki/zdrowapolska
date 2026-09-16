@@ -4,8 +4,9 @@
  * LIKE po lokalnej bazie SQLite, a na końcu żywy słownik NFZ.
  */
 
-import { likeBenefits } from './db';
+import { allBenefits } from './db';
 import { getBenefits } from './nfz';
+import { normText } from '../src/lib/matchQueues';
 
 const MEILI_URL = (process.env.MEILI_URL ?? '').replace(/\/$/, '');
 const MEILI_KEY = process.env.MEILI_MASTER_KEY ?? '';
@@ -168,8 +169,14 @@ export async function searchBenefits(query: string, limit = 25): Promise<SearchR
     }
   }
 
-  // 2) SQLite LIKE
-  const like = likeBenefits(`%${q.replace(/[%_]/g, '')}%`, limit);
+  // 2) lokalna baza — porównanie po normalizacji (SQLite LIKE jest case-insensitive
+  // tylko dla ASCII: „łódź" nie trafiałoby w „ŁÓDŹ", „dentysta" w „STOMATOLOGICZNA")
+  const qn = normText(q);
+  const like = qn
+    ? allBenefits()
+        .filter((b) => normText(b).includes(qn))
+        .slice(0, limit)
+    : [];
   if (like.length > 0) return { items: like, source: 'sqlite' };
 
   // 3) żywy słownik NFZ

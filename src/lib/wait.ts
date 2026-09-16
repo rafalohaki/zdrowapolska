@@ -10,7 +10,10 @@ export function parsePcus(label: unknown): number | null {
     const m = num ? parseFloat(num[1].replace(',', '.')) : 1;
     return Math.round(m * 30.42);
   }
-  if (text.includes('rok') || text.includes('lat')) return 365;
+  if (text.includes('rok') || text.includes('lat')) {
+    const y = num ? parseFloat(num[1].replace(',', '.')) : 1;
+    return Math.round(y * 365); // „2 lata" → 730 (wcześniej zawsze 365)
+  }
   if (num) {
     const val = parseFloat(num[1].replace(',', '.'));
     return Number.isFinite(val) ? Math.round(val) : null;

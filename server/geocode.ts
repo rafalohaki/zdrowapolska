@@ -29,13 +29,18 @@ db.exec(`
 `);
 
 const nowIso = () => new Date().toISOString();
+// miss ważny 30 dni — potem ponawiamy (Nominatim sukcesywnie uzupełnia dane)
+const MISS_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 function dbLookup(address: string): { lat: number; lon: number } | 'miss' | null {
-  const row = db.query('SELECT lat, lon, miss FROM geocache WHERE address = ?').get(address) as
-    | { lat: number | null; lon: number | null; miss: number }
+  const row = db.query('SELECT lat, lon, miss, fetched_at FROM geocache WHERE address = ?').get(address) as
+    | { lat: number | null; lon: number | null; miss: number; fetched_at: string }
     | undefined;
   if (!row) return null;
-  if (row.miss || row.lat === null || row.lon === null) return 'miss';
+  if (row.miss || row.lat === null || row.lon === null) {
+    const age = Date.now() - new Date(row.fetched_at).getTime();
+    return age < MISS_TTL_MS ? 'miss' : null;
+  }
   return { lat: row.lat, lon: row.lon };
 }
 
@@ -85,26 +90,28 @@ export type GeoResult = { address: string; lat: number; lon: number } | null;
 
 /**
  * Geokoduje batch adresów (cache-first; max 20 na zapytanie).
- * NULL = nie znaleziono (zapisane, nie pytamy ponownie).
+ * Zwraca JEDEN wynik na każdy adres wejściowy — deduplikacja służy tylko
+ * ograniczeniu pracy; pytanie o duplikaty nie zaburza indeksowania odpowiedzi.
+ * NULL = nie znaleziono (zapisane, nie pytamy ponownie przez MISS_TTL_MS).
  */
 export async function geocodeBatch(addresses: string[]): Promise<(GeoResult | null)[]> {
-  const list = [...new Set(addresses.map((a) => a.trim()).filter(Boolean))].slice(0, 20);
-  const out: (GeoResult | null)[] = [];
-  for (const address of list) {
-    const cached = dbLookup(address);
-    if (cached && cached !== 'miss') {
-      out.push({ address, ...cached });
+  const inputs = addresses.map((a) => a.trim()).filter(Boolean).slice(0, 20);
+  const resolved = new Map<string, GeoResult | null>();
+  for (const address of new Set(inputs)) {
+    const hit = dbLookup(address);
+    if (hit && hit !== 'miss') {
+      resolved.set(address, { address, ...hit });
       continue;
     }
-    if (cached === 'miss') {
-      out.push(null);
+    if (hit === 'miss') {
+      resolved.set(address, null);
       continue;
     }
     const point: { lat: number; lon: number } | null = await Effect.runPromise(
       nominatimEffect(address),
     );
     dbSave(address, point);
-    out.push(point ? { address, lat: point.lat, lon: point.lon } : null);
+    resolved.set(address, point ? { address, lat: point.lat, lon: point.lon } : null);
   }
-  return out;
+  return inputs.map((a) => resolved.get(a) ?? null);
 }

@@ -169,6 +169,17 @@ export function trackedBenefits(): string[] {
   ).map((r) => r.benefit);
 }
 
+/** Śledzone świadczenia od NAJSTARSZEGO snapshotu — przy limicie na cykl sync odświeża wszystkie po kolei. */
+export function staleBenefits(): string[] {
+  return (
+    db
+      .query(
+        'SELECT benefit, MIN(fetched_at) AS oldest FROM queue_snapshots GROUP BY benefit ORDER BY oldest ASC',
+      )
+      .all() as { benefit: string }[]
+  ).map((r) => r.benefit);
+}
+
 export function getSyncState(key: string): string | null {
   const row = db.query('SELECT value FROM sync_state WHERE key = ?').get(key) as
     | { value: string }

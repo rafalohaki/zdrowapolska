@@ -15,7 +15,7 @@ export function normPhone(phone: unknown): string {
   return tail.length >= 7 ? tail : '';
 }
 
-function normText(text: string): string {
+export function normText(text: string): string {
   return text
     .toLowerCase()
     .replace(/ł/g, 'l') // NFD nie rozkłada U+0142 — bez tego „Łódź" ≠ „lodz"

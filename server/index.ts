@@ -12,7 +12,7 @@ import {
   type CompareResponse,
   type NfzRecord,
 } from './nfz';
-import { advise, type AiRequest } from './ai';
+import { advise, type AiRequest, type CompactRecord } from './ai';
 import {
   getSnapshotOne,
   getSnapshots,
@@ -302,7 +302,12 @@ app.get('/api/air-stations', async (c) => {
 // Jakość powietrza GIOŚ — „czy dziś bezpieczny trening?"
 app.get('/api/air', async (c) => {
   const locality = cut((c.req.query('locality') ?? '').trim(), 60);
-  const stationId = Number(c.req.query('station') ?? 0);
+  const stationRaw = c.req.query('station');
+  const stationId = stationRaw ? Number(stationRaw) : 0;
+  // ?station=abc → czytelny 400 zamiast mylącego „Podaj miejscowość"
+  if (stationRaw && !Number.isFinite(stationId)) {
+    return c.json({ error: 'station: dodatnia liczba całkowita' }, 400);
+  }
   const { airForLocality, airForStation } = await import('./air');
   if (stationId > 0) {
     const data = await cached(`air:station:${stationId}`, 30 * 60 * 1000, () => airForStation(stationId));
@@ -328,6 +333,32 @@ app.get('/api/insights', (c) => {
   return c.json(JSON.parse(raw) as object);
 });
 
+/** Sanitizacja rekordu z body — surowe obiekty z sieci nie mogą wywalić promptu (flags: undefined → TypeError → 500). */
+function cleanRecord(r: unknown): CompactRecord {
+  const o = (r ?? {}) as Record<string, unknown>;
+  const f = (o['flags'] ?? {}) as Record<string, unknown>;
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  return {
+    provider: String(o['provider'] ?? '').slice(0, 200),
+    locality: String(o['locality'] ?? '').slice(0, 120),
+    address: String(o['address'] ?? '').slice(0, 200),
+    benefit: String(o['benefit'] ?? '').slice(0, 120),
+    days: num(o['days']),
+    awaiting: num(o['awaiting']),
+    phone: String(o['phone'] ?? '').slice(0, 40),
+    flags: {
+      ramp: !!f['ramp'],
+      elevator: !!f['elevator'],
+      toilet: !!f['toilet'],
+      wheelchairs: !!f['wheelchairs'],
+      ac: !!f['ac'],
+      automaticDoor: !!f['automaticDoor'],
+      bus: !!f['bus'],
+      forChildren: !!f['forChildren'],
+    },
+  };
+}
+
 // Doradca AI (Groq/OpenRouter z lokalnym fallbackiem)
 app.post('/api/ai', async (c) => {
   const body = (await c.req.json<AiRequest>().catch(() => null)) as AiRequest | null;
@@ -338,7 +369,10 @@ app.post('/api/ai', async (c) => {
   const req: AiRequest = {
     benefit: String(body.benefit).slice(0, 120),
     question: typeof body.question === 'string' ? body.question.slice(0, 500) : undefined,
-    results: body.results.slice(0, 20),
+    results: body.results
+      .filter((r) => r !== null && typeof r === 'object')
+      .slice(0, 20)
+      .map(cleanRecord),
   };
   return c.json(await advise(req));
 });

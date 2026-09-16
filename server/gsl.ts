@@ -44,10 +44,14 @@ export type GslResult = {
  * GSL trzyma wyniki wyszukiwania w sesji — paginacja ({Kategoria}Page) działa tylko
  * z ciasteczkami sesji, w której wykonano Search. Utrzymujemy słoiki cookies per kontekst.
  */
-const sessions = new Map<string, string>();
+const sessions = new Map<string, { cookie: string; total: number }>();
 
 function sessionCookie(key: string): string | undefined {
-  return sessions.get(key);
+  return sessions.get(key)?.cookie;
+}
+
+function sessionTotal(key: string): number {
+  return sessions.get(key)?.total ?? 0;
 }
 
 function storeCookies(key: string, res: Response): void {
@@ -55,7 +59,7 @@ function storeCookies(key: string, res: Response): void {
     typeof res.headers.getSetCookie === 'function' ? res.headers.getSetCookie() : [];
   if (!setCookies.length) return;
   const jar = new Map<string, string>();
-  for (const existing of (sessions.get(key) ?? '').split('; ').filter(Boolean)) {
+  for (const existing of (sessions.get(key)?.cookie ?? '').split('; ').filter(Boolean)) {
     const [n, ...v] = existing.split('=');
     jar.set(n, v.join('='));
   }
@@ -64,8 +68,16 @@ function storeCookies(key: string, res: Response): void {
     const eq = pair.indexOf('=');
     if (eq > 0) jar.set(pair.slice(0, eq).trim(), pair.slice(eq + 1).trim());
   }
-  sessions.set(key, [...jar].map(([n, v]) => `${n}=${v}`).join('; '));
+  sessions.set(key, {
+    cookie: [...jar].map(([n, v]) => `${n}=${v}`).join('; '),
+    total: sessions.get(key)?.total ?? 0,
+  });
   if (sessions.size > 200) sessions.delete(sessions.keys().next().value as string);
+}
+
+function storeTotal(key: string, total: number): void {
+  const s = sessions.get(key);
+  if (s) s.total = total;
 }
 
 /** Wyjątki od reguły Search→Page: GSL używa liczby pojedynczej / innej nazwy. */
@@ -126,8 +138,8 @@ export async function gslFacilities(
   const sessKey = `${category}:${province}:${name.toLowerCase()}`;
   const safePage = Number.isFinite(page) ? Math.max(1, Math.min(Math.floor(page), 68)) : 1;
   let cookie = sessionCookie(sessKey);
-  let total = 0;
-
+  // total zapamiętany w sesji — ciepła sesja zna TotalCount bez ponownego Search
+  let total = sessionTotal(sessKey);
 
   const doSearchWithCookies = async (): Promise<string> => {
     const res = await fetch(searchUrl(route, province, name), {
@@ -144,6 +156,7 @@ export async function gslFacilities(
     cookie = sessionCookie(sessKey) ?? cookie;
     const html = await res.text();
     total = parseTotal(html) || total;
+    storeTotal(sessKey, total);
     discoverPageRoute(category, html);
     return html;
   };
@@ -186,6 +199,7 @@ export async function gslFacilities(
     cookie = sessionCookie(sessKey) ?? cookie;
     const html = await res.text();
     total = parseTotal(html) || total;
+    storeTotal(sessKey, total);
     discoverPageRoute(category, html);
     return html;
   };
@@ -243,8 +257,9 @@ export function parseGslResults(html: string): GslFacility[] {
     const address =
       parts.find((p) => /\d{2}-\d{3}\s/.test(p) || /^(ul\.|al\.|os\.|pl\.|rynek|ulica)/i.test(p)) ??
       '';
-    // telefony: „Telefon do informacji:" preferowany, potem „do rejestracji" i inne
-    const phones = [...text.matchAll(/Telefon do [a-ząęó]+:\s*([+\d][\d\s()-]{6,})/gi)].map((m) =>
+    // telefony: „Telefon do informacji:" preferowany, potem „do rejestracji" i inne;
+    // etykieta to dowolny tekst do dwukropka ([a-ząęó] gubił np. „ś" w etykietach)
+    const phones = [...text.matchAll(/Telefon do [^:|]{1,60}:\s*([+\d][\d\s()-]{6,})/gi)].map((m) =>
       m[1].trim(),
     );
     const phone = phones[0] ?? '';

@@ -15,7 +15,7 @@ import {
   saveSnapshot,
   setSyncState,
   getSyncState,
-  trackedBenefits,
+  staleBenefits,
 } from './db';
 import { computeInsights } from './insights';
 import { getBenefits, getCompare } from './nfz';
@@ -103,8 +103,11 @@ export async function syncBenefits(): Promise<number> {
 
 export async function syncQueuesForBenefit(benefit: string, kase: 1 | 2 = 1): Promise<void> {
   const compare = await getCompare(benefit, kase, Number(process.env.SYNC_PAGES ?? 1));
+  // województwa z błędem (429/sieć) pomijamy — pusty snapshot z 0 rekordów byłby
+  // serwowany z bazy jako "świeży" przez 24 h i zamrażał dziurę w wynikach
+  const failed = new Set(compare.errors.map((e) => e.code));
   for (const p of compare.provinces) {
-    saveSnapshot(benefit, p.code, kase, p.total, p.records);
+    if (!failed.has(p.code)) saveSnapshot(benefit, p.code, kase, p.total, p.records);
   }
   setSyncState('queues_synced_at', new Date().toISOString());
 }
@@ -116,7 +119,9 @@ export async function syncQueues(): Promise<number> {
     .split(',')
     .map((s) => s.trim())
     .filter((s) => inDb.has(s));
-  const tracked = trackedBenefits();
+  // najstarsze snapshoty pierwsze — bez tego alfabetyczna lista zawsze
+  // obcinała te same świadczenia na limicie SYNC_MAX_QUEUES_PER_RUN
+  const tracked = staleBenefits();
   const queue = [...new Set([...popular, ...tracked])].slice(
     0,
     Number(process.env.SYNC_MAX_QUEUES_PER_RUN ?? 40),
