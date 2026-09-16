@@ -52,6 +52,13 @@ export function parseGslAddress(address: string): ParsedAddr {
   return { city: cityNorm, street, number };
 }
 
+/** Surowe miasto z adresu GSL — „ul. X 1, 30-901 KRAKÓW" → „KRAKÓW" (diakrytyki zostają — NFZ ich wymaga). */
+export function gslCity(address: string): string {
+  if (!address.includes(',')) return '';
+  const seg = address.split(',').pop() ?? '';
+  return seg.replace(/^\s*\d{2}-\d{3}\s+/, '').trim();
+}
+
 /** ITL: address "NARUTOWICZA 2" + locality "NOWY SĄCZ" (osobne pola). */
 export function parseItlAddress(address: unknown, locality: unknown): ParsedAddr {
   const { street, number } = splitNumber(normText(typeof address === 'string' ? address : ''));

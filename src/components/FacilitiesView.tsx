@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { fetchFacilities, fetchProvinceQueues } from '../lib/api';
 import { PROVINCES } from '../lib/provinces';
 import { GSL_CATEGORY_GROUPS, GSL_CATEGORIES, type GslCategoryKey, type GslFacility, type NfzRecord } from '../lib/types';
-import { buildQueueIndex, matchFacility, type QueueInfo } from '../lib/matchQueues';
+import { buildQueueIndex, gslCity, matchFacility, type QueueInfo } from '../lib/matchQueues';
 import { formatDaysLong, formatDaysShort, waitLevel } from '../lib/wait';
 import { ErrorState } from './States';
 import { FacilitiesMap } from './FacilitiesMap';
@@ -27,6 +27,8 @@ export function FacilitiesView(props?: {
   /** Kontrolowane województwo (MentalHealthView trzyma je ponad presetami) */
   province?: string;
   onProvinceChange?: (code: string) => void;
+  /** Cross-link: „sprawdź kolejkę" — przechodzi do trybu terminów z miastem/świadczeniem */
+  onQueueClick?: (locality: string, benefit?: string) => void;
 }) {
   const [category, setCategory] = useState<GslCategoryKey>(props?.initialCategory ?? 'apteki');
   const [innerProvince, setInnerProvince] = useState('06');
@@ -351,6 +353,17 @@ export function FacilitiesView(props?: {
                     </a>
                   ))}
                 </p>
+              )}
+              {props?.onQueueClick && (
+                <button
+                  type="button"
+                  onClick={() => props.onQueueClick!(gslCity(g.address), props.queueBenefit)}
+                  className="no-print mt-2.5 inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 transition hover:border-brand-300 hover:text-brand-700 dark:border-slate-700 dark:text-slate-300 dark:hover:border-brand-500"
+                >
+                  {props.queueBenefit
+                    ? 'Kolejka dla tego świadczenia →'
+                    : 'Kolejki NFZ w tej miejscowości →'}
+                </button>
               )}
             </li>
           ))}

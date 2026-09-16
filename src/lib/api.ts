@@ -100,6 +100,28 @@ export async function fetchCompare(
   return (await res.json()) as CompareResponse;
 }
 
+export type TrendResponse = {
+  points: { day: string; total: number; records: number }[];
+  from: string | null;
+  to: string | null;
+  deltaTotal: number | null;
+  deltaPct: number | null;
+};
+
+/** Trend kolejki (dzienna suma oczekujących z lokalnej historii snapshotów). */
+export async function fetchTrend(
+  benefit: string,
+  kase: number,
+  locality = '',
+  signal?: AbortSignal,
+): Promise<TrendResponse> {
+  const params = new URLSearchParams({ benefit, case: String(kase) });
+  if (locality) params.set('locality', locality);
+  const res = await fetch(`${API_BASE}/api/trend?${params}`, { signal });
+  if (!res.ok) throw new Error(`Trend: HTTP ${res.status}`);
+  return (await res.json()) as TrendResponse;
+}
+
 export async function fetchAdvice(
   benefit: string,
   results: unknown,

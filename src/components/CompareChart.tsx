@@ -27,13 +27,17 @@ export function CompareChart({
   selected,
   onSelect,
   loadingProgress,
+  reference,
 }: {
   stats: ProvinceStat[];
   selected: string;
   onSelect: (code: string | null) => void;
   loadingProgress?: string;
+  /** mediana dni oczekiwania wszystkich pobranych placówek — linia odniesienia */
+  reference?: number | null;
 }) {
-  const max = Math.max(...stats.map((s) => s.bestDays ?? 0), 1);
+  const max = Math.max(...stats.map((s) => s.bestDays ?? 0), reference ?? 0, 1);
+  const refPct = reference != null ? Math.min((reference / max) * 100, 100) : null;
 
   return (
     <div className="animate-fade-up rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-card">
@@ -83,6 +87,13 @@ export function CompareChart({
                     }`}
                     style={{ width: `${width}%` }}
                   />
+                  {refPct !== null && (
+                    <span
+                      className="pointer-events-none absolute inset-y-0 border-l-2 border-dashed border-rose-400/90"
+                      style={{ left: `${refPct}%` }}
+                      title={`Mediana PL: ${formatDaysShort(reference!)}`}
+                    />
+                  )}
                 </span>
                 <span className="w-16 shrink-0 text-right text-sm font-semibold tabular-nums text-slate-800 dark:text-slate-100 sm:w-24">
                   {formatDaysShort(s.bestDays)}
@@ -99,6 +110,13 @@ export function CompareChart({
       <p className="mt-3 text-xs text-slate-400 dark:text-slate-500">
         Wartość = najkrótszy czas oczekiwania spośród pobranych placówek w województwie. Kliknij, aby
         przefiltrować ranking.
+        {refPct !== null && (
+          <>
+            {' '}
+            <span className="text-rose-500 dark:text-rose-400">┆</span> przerywana linia = mediana
+            wszystkich pobranych placówek ({formatDaysShort(reference!)}).
+          </>
+        )}
       </p>
     </div>
   );

@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Logo, MoonIcon, SunIcon } from './Icons';
+import { getInstallPrompt, isStandalone, onInstallPrompt } from '../lib/pwa';
 
 import type { AppMode } from '../lib/search';
 export type { AppMode };
@@ -24,6 +25,26 @@ function ThemeToggle() {
       className="rounded-lg border border-slate-200 p-2 text-slate-500 transition hover:border-brand-300 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-brand-500"
     >
       {dark ? <SunIcon /> : <MoonIcon />}
+    </button>
+  );
+}
+
+function InstallButton() {
+  const [ready, setReady] = useState(() => getInstallPrompt() !== null);
+  useEffect(() => onInstallPrompt(() => setReady(getInstallPrompt() !== null)), []);
+  if (!ready || isStandalone()) return null;
+  return (
+    <button
+      type="button"
+      onClick={async () => {
+        const p = getInstallPrompt();
+        if (!p) return;
+        await p.prompt();
+        setReady(false);
+      }}
+      className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-700"
+    >
+      Zainstaluj
     </button>
   );
 }
@@ -100,6 +121,7 @@ export function Header({
           >
             Dane otwarte
           </a>
+          <InstallButton />
           <ThemeToggle />
         </nav>
       </div>

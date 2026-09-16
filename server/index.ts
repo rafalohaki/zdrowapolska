@@ -22,6 +22,7 @@ import {
   snapshotProvinces,
   dbStats,
   getSyncState,
+  queueTrend,
 } from './db';
 import { searchBenefits, reindexBenefits } from './search';
 import { getSyncStatus, startSyncScheduler, triggerSync } from './sync';
@@ -73,7 +74,12 @@ app.use('/api/*', async (c, next) => {
   const path = c.req.path;
   if (path.startsWith('/api/search') || path.startsWith('/api/insights')) {
     c.header('Cache-Control', 'public, max-age=600');
-  } else if (path.startsWith('/api/compare') || path.startsWith('/api/localities') || path.startsWith('/api/benefits')) {
+  } else if (
+    path.startsWith('/api/compare') ||
+    path.startsWith('/api/localities') ||
+    path.startsWith('/api/benefits') ||
+    path.startsWith('/api/trend')
+  ) {
     c.header('Cache-Control', 'public, max-age=300');
   } else if (path.startsWith('/api/air')) {
     c.header('Cache-Control', 'public, max-age=900, stale-while-revalidate=300');
@@ -366,6 +372,28 @@ app.get('/api/air', async (c) => {
     () => airForLocality(locality),
     (r) => r.station !== null,
   );
+  return c.json(data);
+});
+
+// Trend kolejki — historia dzienna budowana przy każdym zapisie snapshotu
+app.get('/api/trend', async (c) => {
+  const benefit = cut((c.req.query('benefit') ?? '').trim(), 120);
+  const kase = c.req.query('case') === '2' ? 2 : 1;
+  const locality = cut((c.req.query('locality') ?? '').trim().toUpperCase(), 60);
+  if (benefit.length < 3) return c.json({ error: 'benefit: min. 3 znaki' }, 400);
+  const data = await cached(`trend:${benefit}:${kase}:${locality}`, 10 * 60 * 1000, async () => {
+    const points = queueTrend(benefit, kase, locality);
+    const first = points[0];
+    const last = points[points.length - 1];
+    const deltaTotal = first && last && points.length > 1 ? last.total - first.total : null;
+    return {
+      points,
+      from: first?.day ?? null,
+      to: last?.day ?? null,
+      deltaTotal,
+      deltaPct: deltaTotal !== null && first!.total > 0 ? Math.round((deltaTotal / first!.total) * 100) : null,
+    };
+  });
   return c.json(data);
 });
 

@@ -204,6 +204,7 @@ export function MentalHealthView({ onCheckQueues }: { onCheckQueues: (benefit: s
           queueBenefit={preset.queueBenefit}
           province={province}
           onProvinceChange={setProvince}
+          onQueueClick={(_loc, benefit) => benefit && onCheckQueues(benefit)}
         />
       </div>
     </div>

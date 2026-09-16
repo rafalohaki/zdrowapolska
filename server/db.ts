@@ -40,6 +40,19 @@ db.exec(`
     PRIMARY KEY (benefit, province, case_no, locality)
   );
   CREATE INDEX IF NOT EXISTS idx_snapshots_benefit ON queue_snapshots (benefit, case_no);
+  -- historia dzienna per klucz — napędza „trend kolejki" (snapshot się nadpisuje, historia rośnie)
+  CREATE TABLE IF NOT EXISTS queue_history (
+    benefit   TEXT NOT NULL,
+    province  TEXT NOT NULL,
+    case_no   INTEGER NOT NULL,
+    locality  TEXT NOT NULL DEFAULT '',
+    day       TEXT NOT NULL,
+    total     INTEGER NOT NULL,
+    records   INTEGER NOT NULL,
+    fetched_at TEXT NOT NULL,
+    PRIMARY KEY (benefit, province, case_no, locality, day)
+  );
+  CREATE INDEX IF NOT EXISTS idx_history_benefit ON queue_history (benefit, case_no, locality, day);
   CREATE TABLE IF NOT EXISTS sync_state (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -99,6 +112,27 @@ export function saveSnapshot(
      ON CONFLICT(benefit, province, case_no, locality)
      DO UPDATE SET fetched_at = excluded.fetched_at, total = excluded.total, json = excluded.json`,
   ).run(benefit, province, kase, locality, now(), total, JSON.stringify(records));
+  // historia: jeden wpis dziennie per klucz, w ramach dnia nadpisany najnowszym pomiarem
+  db.query(
+    `INSERT INTO queue_history (benefit, province, case_no, locality, day, total, records, fetched_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(benefit, province, case_no, locality, day)
+     DO UPDATE SET total = excluded.total, records = excluded.records, fetched_at = excluded.fetched_at`,
+  ).run(benefit, province, kase, locality, now().slice(0, 10), total, records.length, now());
+}
+
+export type TrendPoint = { day: string; total: number; records: number };
+
+/** Trend kolejki: suma oczekujących i placówek per dzień (PL lub wskazana miejscowość). */
+export function queueTrend(benefit: string, kase: number, locality = ''): TrendPoint[] {
+  return db
+    .query(
+      `SELECT day, SUM(total) AS total, SUM(records) AS records
+       FROM queue_history
+       WHERE benefit = ? AND case_no = ? AND locality = ?
+       GROUP BY day ORDER BY day`,
+    )
+    .all(benefit, kase, locality) as TrendPoint[];
 }
 
 export function getSnapshots(benefit: string, kase: number, locality = ''): ProvinceSnapshot[] {

@@ -15,6 +15,8 @@ const { cached, purgeKeys } = await import('../server/cache');
 const { searchBenefits } = await import('../server/search');
 const { geocodeBatch } = await import('../server/geocode');
 const { normCity } = await import('../server/air');
+const { gslCity } = await import('../src/lib/matchQueues');
+const { facilitiesCsv } = await import('../src/lib/csv');
 
 describe('staleBenefits — sync odświeża najstarsze snapshoty pierwsze', () => {
   test('kolejność po MIN(fetched_at), nie alfabetyczna', () => {
@@ -96,6 +98,63 @@ describe('geocodeBatch — jeden wynik na jeden adres wejściowy', () => {
     expect(res[0]?.lat).toBeCloseTo(50.04);
     expect(res[1]?.lat).toBeCloseTo(50.05);
     expect(res[2]?.lat).toBeCloseTo(50.04);
+  });
+});
+
+describe('queueTrend — historia dzienna kolejek', () => {
+  test('saveSnapshot zapisuje historię + agregat per dzień', () => {
+    const B = 'TREND TEST ŚWIADCZENIE';
+    // 3 dni historii wstawione wprost + dziś przez saveSnapshot
+    const ins = db.db.prepare(
+      "INSERT INTO queue_history (benefit, province, case_no, locality, day, total, records, fetched_at) VALUES (?, '06', 1, '', ?, ?, 5, ?)",
+    );
+    ins.run(B, '2026-09-01', 100, '2026-09-01T10:00:00Z');
+    ins.run(B, '2026-09-08', 80, '2026-09-08T10:00:00Z');
+    db.saveSnapshot(B, '06', 1, 60, [{ id: 'x' }]);
+    const pts = db.queueTrend(B, 1);
+    expect(pts.length).toBe(3);
+    expect(pts[0].total).toBe(100);
+    expect(pts[2].total).toBe(60); // dziś z saveSnapshot
+  });
+});
+
+describe('gslCity — miasto z adresu GSL z diakrytykami', () => {
+  test('wyciąga surowe miasto (NFZ wymaga KRAKÓW, nie krakow)', () => {
+    expect(gslCity('ul. Wrocławska 1-3, 30-901 KRAKÓW')).toBe('KRAKÓW');
+    expect(gslCity('NARUTOWICZA 2, 33-300 Nowy Sącz')).toBe('Nowy Sącz');
+    expect(gslCity('ul. Leśna 7')).toBe(''); // brak segmentu z miastem
+  });
+});
+
+describe('facilitiesCsv — eksport rankingu', () => {
+  const f = (provider: string) =>
+    ({
+      id: provider,
+      provider,
+      benefit: 'ODDZIAŁ KARDIOLOGICZNY',
+      locality: 'RZESZÓW',
+      address: 'LEŚNA 7',
+      phone: '17 000 00 00',
+      lat: null,
+      lon: null,
+      geo: null,
+      province: '18',
+      provinceName: 'podkarpackie',
+      days: 45,
+      waitLabel: '45 dni',
+      awaiting: 120,
+      statsUpdate: null,
+      situationAsAt: null,
+      flags: { ramp: true, elevator: false, toilet: true, wheelchairs: false, ac: false, automaticDoor: false, bus: true, forChildren: false },
+    }) as const;
+
+  test('BOM + średniki + escapowanie cudzysłowów', () => {
+    const csv = facilitiesCsv([f('SZPITAL "MIEJSKI"; RZESZÓW') as never]);
+    expect(csv.charCodeAt(0)).toBe(0xfeff);
+    const lines = csv.slice(1).split('\r\n'); // slice zdejmuje BOM
+    expect(lines[0].startsWith('rank;placowka')).toBe(true);
+    expect(lines[1]).toContain('"SZPITAL ""MIEJSKI""; RZESZÓW"');
+    expect(lines[1]).toContain(';45;');
   });
 });
 

@@ -11,6 +11,7 @@
 import {
   allBenefits,
   dbStats,
+  getSnapshotOne,
   saveBenefits,
   saveSnapshot,
   setSyncState,
@@ -19,6 +20,7 @@ import {
 } from './db';
 import { computeInsights } from './insights';
 import { getBenefits, getCompare } from './nfz';
+import { notifyQueueChanges, type QueueChange } from './notify';
 import { reindexBenefits } from './search';
 
 const ALPHABET = 'aąbcćdeęfghijklmnóprstuwyzźż'.split('');
@@ -101,15 +103,26 @@ export async function syncBenefits(): Promise<number> {
   return names.length;
 }
 
-export async function syncQueuesForBenefit(benefit: string, kase: 1 | 2 = 1): Promise<void> {
+export async function syncQueuesForBenefit(benefit: string, kase: 1 | 2 = 1): Promise<QueueChange[]> {
   const compare = await getCompare(benefit, kase, Number(process.env.SYNC_PAGES ?? 1));
   // województwa z błędem (429/sieć) pomijamy — pusty snapshot z 0 rekordów byłby
   // serwowany z bazy jako "świeży" przez 24 h i zamrażał dziurę w wynikach
   const failed = new Set(compare.errors.map((e) => e.code));
+  const changes: QueueChange[] = [];
   for (const p of compare.provinces) {
-    if (!failed.has(p.code)) saveSnapshot(benefit, p.code, kase, p.total, p.records);
+    if (failed.has(p.code)) continue;
+    const prev = getSnapshotOne(benefit, p.code, kase);
+    saveSnapshot(benefit, p.code, kase, p.total, p.records);
+    // alert przy istotnej zmianie: ≥15% i ≥10 osób — drobne wahania nie spamują webhooka
+    if (prev && prev.total > 0) {
+      const delta = p.total - prev.total;
+      if (Math.abs(delta) >= 10 && Math.abs(delta / prev.total) >= 0.15) {
+        changes.push({ benefit, province: p.code, locality: '', oldTotal: prev.total, newTotal: p.total });
+      }
+    }
   }
   setSyncState('queues_synced_at', new Date().toISOString());
+  return changes;
 }
 
 /** Synchronizacja kolejek dla świadczeń już śledzonych + popularnych, z limitem na cykl. */
@@ -127,11 +140,16 @@ export async function syncQueues(): Promise<number> {
     Number(process.env.SYNC_MAX_QUEUES_PER_RUN ?? 40),
   );
   let done = 0;
+  const changes: QueueChange[] = [];
   for (const benefit of queue) {
-    await syncQueuesForBenefit(benefit);
+    changes.push(...(await syncQueuesForBenefit(benefit)));
     done++;
     status.progress = `kolejki ${done}/${queue.length}`;
     log(`${status.progress}: ${benefit}`);
+  }
+  if (changes.length > 0) {
+    log(`wykryto ${changes.length} istotnych zmian kolejek → Discord`);
+    await notifyQueueChanges(changes);
   }
   return done;
 }

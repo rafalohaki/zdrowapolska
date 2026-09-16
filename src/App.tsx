@@ -13,6 +13,8 @@ import { EmptyState, ErrorState, ResultsSkeleton } from './components/States';
 import { AboutSection, Footer, Header } from './components/Footer';
 import { modeFromUrl, paramsToState, sortFacilities, syncUrl, matchesA11y, DEFAULT_STATE, type AppMode, type SearchState } from './lib/search';
 import { CheckIcon, LinkIcon } from './components/Icons';
+import { TrendChip } from './components/TrendChip';
+import { downloadCsv, facilitiesCsv } from './lib/csv';
 import { lazy, Suspense } from 'react';
 
 // code-splitting: widoki trybów ładowane na żądanie (mniejszy bundle startowy)
@@ -288,7 +290,19 @@ export default function App() {
           </Suspense>
         ) : mode === 'placowki' ? (
           <Suspense fallback={<PageLoader />}>
-            <FacilitiesView />
+            <FacilitiesView
+              onQueueClick={(loc, benefit) => {
+                goMode('terminy');
+                if (benefit) {
+                  search(benefit, loc);
+                } else {
+                  // bez powiązanego świadczenia: przenieś przynajmniej miejscowość do filtra
+                  const next = { ...state, locality: loc };
+                  setState(next);
+                  sync(next);
+                }
+              }}
+            />
           </Suspense>
         ) : mode === 'powietrze' ? (
           <Suspense fallback={<PageLoader />}>
@@ -393,6 +407,7 @@ export default function App() {
                     </span>
                   )}
                 </p>
+                <TrendChip benefit={state.benefit} kase={state.kase} locality={state.locality} />
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
@@ -405,6 +420,21 @@ export default function App() {
                   {copied ? <CheckIcon className="h-4 w-4 text-brand-600" /> : <LinkIcon className="h-4 w-4" />}
                   {copied ? 'Skopiowano' : 'Kopiuj link'}
                 </button>
+                {facilities.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      downloadCsv(
+                        `zdrowapolska-${state.benefit.toLowerCase().replace(/\s+/g, '-')}.csv`,
+                        facilitiesCsv(facilities),
+                      )
+                    }
+                    title="Pobierz ranking jako CSV (Excel)"
+                    className="no-print inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 shadow-card transition hover:border-brand-300 hover:text-brand-700"
+                  >
+                    Eksport CSV
+                  </button>
+                )}
                 <div className="flex rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-1 shadow-card" role="tablist" aria-label="Widok">
                   {(['ranking', 'mapa', 'compare'] as const).map((v) => (
                     <button
@@ -477,6 +507,7 @@ export default function App() {
                       selected={state.province}
                       onSelect={(code) => update({ province: code ?? 'all' })}
                       loadingProgress={loading && targetsTotal > 1 ? `${targetsDone}/${targetsTotal} woj.` : undefined}
+                      reference={medianDays}
                     />
                   )}
                 </div>
