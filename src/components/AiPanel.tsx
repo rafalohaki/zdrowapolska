@@ -73,7 +73,7 @@ export function AiPanel({ benefit, facilities }: { benefit: string; facilities: 
         </span>
         <div>
           <h2 className="text-base font-semibold text-slate-900 dark:text-white">Doradca AI</h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400 dark:text-slate-500">Analizuje statystyki NFZ i pomaga wybrać placówkę</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">Analizuje statystyki NFZ i pomaga wybrać placówkę</p>
         </div>
       </div>
 
@@ -83,7 +83,7 @@ export function AiPanel({ benefit, facilities }: { benefit: string; facilities: 
           onChange={(e) => setQuestion(e.target.value)}
           rows={2}
           placeholder="Pytanie (opcjonalnie): np. „Która placówka ma najlepszy dojazd?”"
-          className="w-full resize-none rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 text-sm outline-none placeholder:text-slate-400 dark:text-slate-500 focus:border-brand-400"
+          className="w-full resize-none rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 text-sm outline-none placeholder:text-slate-400 dark:text-slate-100 focus:border-brand-400"
         />
         <button
           type="button"

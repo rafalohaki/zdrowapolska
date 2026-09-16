@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import type { Facility } from '../lib/types';
 import { A11Y_FILTERS } from '../lib/types';
 import { formatAwaiting, formatDaysLong } from '../lib/wait';
@@ -6,12 +6,24 @@ import { CloseIcon, PhoneIcon, PinIcon } from './Icons';
 import { WaitBadge } from './WaitBadge';
 
 export function DetailModal({ facility, onClose }: { facility: Facility; onClose: () => void }) {
+  const closeRef = useRef<HTMLButtonElement>(null);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
     document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
+    // focus wchodzi do dialogu (a11y), tło nie scrolluje pod otwartym modalem;
+    // po zamknięciu focus i scroll wracają tam, gdzie były
+    const prevFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const prevOverflow = document.body.style.overflow;
+    closeRef.current?.focus();
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevOverflow;
+      prevFocus?.focus();
+    };
   }, [onClose]);
 
   const flags = A11Y_FILTERS.filter((f) => facility.flags[f.key]);
@@ -31,10 +43,11 @@ export function DetailModal({ facility, onClose }: { facility: Facility; onClose
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-xl font-bold text-slate-900 dark:text-white">{facility.provider}</h2>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400 dark:text-slate-500">{facility.benefit}</p>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{facility.benefit}</p>
           </div>
           <button
             type="button"
+            ref={closeRef}
             onClick={onClose}
             aria-label="Zamknij"
             className="rounded-lg p-2 text-slate-400 dark:text-slate-500 transition hover:bg-slate-100 dark:hover:bg-slate-800 dark:bg-slate-800 hover:text-slate-700 dark:text-slate-200"
@@ -45,7 +58,7 @@ export function DetailModal({ facility, onClose }: { facility: Facility; onClose
 
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <WaitBadge days={facility.days} size="lg" />
-          <span className="text-sm text-slate-500 dark:text-slate-400 dark:text-slate-500">
+          <span className="text-sm text-slate-500 dark:text-slate-400">
             {facility.waitLabel ? `PCUS wg NFZ: ${facility.waitLabel}` : 'brak prognozy PCUS'}
           </span>
         </div>
@@ -113,10 +126,10 @@ export function DetailModal({ facility, onClose }: { facility: Facility; onClose
             ))}
           </ul>
         ) : (
-          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400 dark:text-slate-500">Brak zadeklarowanych udogodnień w bazie NFZ.</p>
+          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Brak zadeklarowanych udogodnień w bazie NFZ.</p>
         )}
 
-        <div className="mt-6 rounded-xl bg-slate-50 dark:bg-slate-800/50 p-4 text-xs leading-relaxed text-slate-500 dark:text-slate-400 dark:text-slate-500">
+        <div className="mt-6 rounded-xl bg-slate-50 dark:bg-slate-800/50 p-4 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
           Dane pochodzą z oficjalnego API NFZ „Terminy Leczenia” i są aktualizowane miesięcznie — przed
           wizytą potwierdź dostępność telefonicznie. Aplikacja nie stanowi porady medycznej.
         </div>

@@ -47,7 +47,9 @@ Zasady:
   należy wybrać się na SOR lub zadzwonić na 112/999.`;
 
 function providerConfig(): { url: string; key: string; model: string } | null {
-  const model = process.env.AI_MODEL ?? 'llama-3.3-70b-versatile';
+  // 'groq/compound' zweryfikowany na żywo w GET /openai/v1/models (09.2026);
+  // stare 'llama-3.3-70b-versatile' zostało wycofane i zwraca 404
+  const model = process.env.AI_MODEL ?? 'groq/compound';
   const provider = (process.env.AI_PROVIDER ?? 'groq').toLowerCase();
   const groqKey = process.env.GROQ_API_KEY;
   const orKey = process.env.OPENROUTER_API_KEY;

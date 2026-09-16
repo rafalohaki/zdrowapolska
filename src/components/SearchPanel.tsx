@@ -111,7 +111,8 @@ export function SearchPanel({
   const pick = (name: string) => {
     setQuery(name);
     setOpen(false);
-    onSubmit(name);
+    // przekazuj lokalnie wpisaną miejscowość — bez tego search() użyłby starej wartości stanu
+    onSubmit(name, locQuery.trim());
   };
 
   const submit = () => {
@@ -159,7 +160,7 @@ export function SearchPanel({
               aria-expanded={open}
               role="combobox"
               id="benefit-input" aria-controls="benefit-listbox"
-              className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-3 pr-4 pl-11 text-base shadow-card outline-none transition placeholder:text-slate-400 dark:text-slate-500 focus:border-brand-400"
+              className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-3 pr-4 pl-11 text-base shadow-card outline-none transition placeholder:text-slate-400 dark:text-slate-100 focus:border-brand-400"
             />
             {loadingDict && (
               <span className="absolute top-1/2 right-3 -translate-y-1/2 text-xs text-slate-400 dark:text-slate-500">szukam…</span>
@@ -195,7 +196,7 @@ export function SearchPanel({
               }}
               placeholder="Miejscowość (opcjonalnie)"
               aria-label="Miejscowość"
-              className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-3 pr-3 pl-10 text-sm shadow-card outline-none transition placeholder:text-slate-400 dark:text-slate-500 focus:border-brand-400"
+              className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-3 pr-3 pl-10 text-sm shadow-card outline-none transition placeholder:text-slate-400 dark:text-slate-100 focus:border-brand-400"
             />
             {locOpen && locQuery.trim().length >= 3 && locItems.length > 0 && (
               <ul className="absolute z-30 mt-2 max-h-64 w-full min-w-56 overflow-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-1 shadow-lift">
@@ -330,7 +331,7 @@ export function SearchPanel({
           })}
         </div>
 
-        <label className="ml-auto flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 dark:text-slate-500">
+        <label className="ml-auto flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
           Sortuj:
           <select
             value={sort}

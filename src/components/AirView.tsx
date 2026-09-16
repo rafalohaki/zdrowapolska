@@ -58,18 +58,31 @@ export function AirView() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
+  // nazwa właśnie wybranej stacji (nie jest nowym zapytaniem autouzupełniania)
+  const pickedRef = useRef<string | null>(null);
+  // numer ostatniego żądania — spóźniona odpowiedź nie nadpisze nowszej
+  const loadSeqRef = useRef(0);
 
   const loadStation = (st: Suggestion) => {
     setShowSug(false);
+    setSuggestions([]);
+    pickedRef.current = st.name;
     setQuery(st.name);
     setLoading(true);
     setError(null);
+    const seq = ++loadSeqRef.current;
     // stacja dokładna; gdy backend nie zna parametru station= — fallback na miejscowość
     fetchAirByStation(st.id)
       .catch(() => fetchAirByLocality(st.city))
-      .then(setData)
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Nieznany błąd'))
-      .finally(() => setLoading(false));
+      .then((d) => {
+        if (loadSeqRef.current === seq) setData(d);
+      })
+      .catch((err: unknown) => {
+        if (loadSeqRef.current === seq) setError(err instanceof Error ? err.message : 'Nieznany błąd');
+      })
+      .finally(() => {
+        if (loadSeqRef.current === seq) setLoading(false);
+      });
   };
 
   // domyślnie Kraków — pierwszy ekran z danymi bez klikania
@@ -81,14 +94,17 @@ export function AirView() {
   // autouzupełnianie z debounce (stacje GIOŚ po mieście)
   useEffect(() => {
     const q = query.trim();
-    if (q.length < 3) {
+    if (q.length < 3 || q === pickedRef.current) {
       setSuggestions([]);
       return;
     }
     const ctrl = new AbortController();
     const t = setTimeout(() => {
       fetchAirStations(q, ctrl.signal)
-        .then((r) => setShowSug(r.length > 0))
+        .then((r) => {
+          setSuggestions(r);
+          if (r.length > 0) setShowSug(true);
+        })
         .catch(() => undefined);
     }, 300);
     return () => {

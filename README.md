@@ -69,7 +69,7 @@ Dlaczego proxy: API NFZ **nie wysyła nagłówków CORS** i **rate-limituje po I
 | `GET /api/compare?benefit=&case=` | porównanie 16 województw (najpierw SQLite, potem NFZ; zapisuje snapshoty) |
 | `POST /api/ai` | doradca AI (`groq/compound`; fallback heurystyczny bez kluczy) |
 | `GET /api/sync/status` · `POST /api/sync/trigger?scope=benefits\|queues\|all` | stan i sterowanie scraperem |
-| `POST /api/search/reindex` | przebudowa indeksu Meilisearch z lokalnej bazy |
+| `POST /api/search/reindex` | przebudowa indeksu Meilisearch z lokalnej bazy (wymaga `SYNC_TOKEN`, jeśli ustawiony) |
 | `GET /api/health` | health + statystyki bazy/cache |
 
 ## 🚀 Szybki start

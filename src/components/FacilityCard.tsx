@@ -19,7 +19,7 @@ export function FacilityCard({
   rank: number;
   onDetails: (f: Facility) => void;
 }) {
-  const rankStyle = RANK_STYLES[rank] ?? 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 dark:text-slate-500';
+  const rankStyle = RANK_STYLES[rank] ?? 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400';
   const activeFlags = A11Y_FILTERS.filter((f) => f.key !== 'forChildren' && facility.flags[f.key]);
 
   return (
@@ -41,7 +41,7 @@ export function FacilityCard({
             <WaitBadge days={facility.days} />
           </div>
 
-          <p className="mt-0.5 truncate text-sm text-slate-500 dark:text-slate-400 dark:text-slate-500">{facility.benefit}</p>
+          <p className="mt-0.5 truncate text-sm text-slate-500 dark:text-slate-400">{facility.benefit}</p>
 
           <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-600 dark:text-slate-300">
             <span className="inline-flex items-center gap-1.5">

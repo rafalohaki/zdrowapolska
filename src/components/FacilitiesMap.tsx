@@ -54,6 +54,11 @@ function escapeHtml(text: string): string {
   return text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 }
 
+/** „+48 184 422 211" → „+48184422211" — bezpieczny href tel: (bez znaków łamiących atrybut HTML). */
+function telHref(phone: string): string {
+  return phone.replace(/[^\d+]/g, '');
+}
+
 // Cache sesji: powrót do tej samej kategorii/prowincji nie pyta backendu wcale.
 // Missy też pamiętamy (backend i tak je cache'uje, ale oszczędzamy round-trip).
 const geoCache = new Map<string, { lat: number; lon: number }>();
@@ -238,7 +243,7 @@ export function FacilitiesMap({
             : '';
         const marker = L.marker([p.lat, p.lon], { icon: makePin(L, dark, dot) }).bindPopup(
           `${label}<br>${escapeHtml(p.address)}${waitLine}${
-            phone ? `<br><a href="tel:${phone.replace(/\s/g, '')}">${escapeHtml(phone)}</a>` : ''
+            phone ? `<br><a href="tel:${telHref(phone)}">${escapeHtml(phone)}</a>` : ''
           }`,
         );
         layer.addLayer(marker);

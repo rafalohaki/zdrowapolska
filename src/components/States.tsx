@@ -55,7 +55,7 @@ export function EmptyState({ onPickHint }: { onPickHint: (name: string) => void 
   return (
     <div className="animate-fade-up rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 text-center shadow-card">
       <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Brak wyników dla tej frazy</h3>
-      <p className="mx-auto mt-2 max-w-lg text-sm text-slate-500 dark:text-slate-400 dark:text-slate-500">
+      <p className="mx-auto mt-2 max-w-lg text-sm text-slate-500 dark:text-slate-400">
         Wystarczy wpisać 3 litery i wybrać z podpowiedzi pod polem wyszukiwania. Popularne frazy:
       </p>
       <div className="mt-4 flex flex-wrap justify-center gap-2">

@@ -132,7 +132,7 @@ export function TerminyMap({
           `<strong>${escapeHtml(f.provider)}</strong><br>${escapeHtml(f.locality)}${
             f.address ? `, ${escapeHtml(f.address)}` : ''
           }<br><strong>Czas oczekiwania: ${escapeHtml(formatDaysShort(f.days))}</strong><br>${
-            f.phone ? `<a href="tel:${f.phone.replace(/\s/g, '')}">${escapeHtml(f.phone)}</a>` : ''
+            f.phone ? `<a href="tel:${telHref(f.phone)}">${escapeHtml(f.phone)}</a>` : ''
           }`,
         );
     }
@@ -178,4 +178,9 @@ function mapKeyChanged(map: LType.Map, key: string): boolean {
 
 function escapeHtml(text: string): string {
   return text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
+}
+
+/** „+48 184 422 211" → „+48184422211" — bezpieczny href tel: (bez znaków łamiących atrybut HTML). */
+function telHref(phone: string): string {
+  return phone.replace(/[^\d+]/g, '');
 }

@@ -210,8 +210,11 @@ export async function gslFacilities(
 }
 
 function decodeEntities(text: string): string {
-  return text
-    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
+  return text.replace(/&#(\d+);/g, (_, code) => {
+    const n = Number(code);
+    // patologiczne encje z upstreamu nie mogą wywalić parse'a (RangeError)
+    return n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : '';
+  })
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
     .replace(/&nbsp;/g, ' ')

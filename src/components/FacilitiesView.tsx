@@ -45,7 +45,7 @@ export function FacilitiesView(props?: {
   const [moreError, setMoreError] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
   const [searchKey, setSearchKey] = useState(
-    `${props?.initialCategory ?? 'apteki'}:06:${(props?.initialName ?? '').trim().toLowerCase()}`,
+    `${props?.initialCategory ?? 'apteki'}:${props?.province ?? '06'}:${(props?.initialName ?? '').trim().toLowerCase()}`,
   );
   const run = (cat: GslCategoryKey, prov: string, nm: string) => {
     setLoading(true);
@@ -182,7 +182,7 @@ export function FacilitiesView(props?: {
       <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
         {props?.title ?? 'Placówki i pomoc NFZ'}
       </h1>
-      <p className="mt-1 text-sm text-slate-500 dark:text-slate-400 dark:text-slate-500">
+      <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
         {props?.subtitle ??
           'Wszystko, co NFZ finansuje — od rodzinnego lekarza, przez apteki i diagnostykę, po SOR — dane z oficjalnego serwisu „Gdzie się leczyć".'}
       </p>
@@ -227,7 +227,7 @@ export function FacilitiesView(props?: {
               }}
               placeholder="Nazwa (opcjonalnie), np. Alba…"
               aria-label="Nazwa placówki"
-              className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3 text-sm shadow-card outline-none transition placeholder:text-slate-400 dark:text-slate-500 focus:border-brand-400"
+              className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3 text-sm shadow-card outline-none transition placeholder:text-slate-400 dark:text-slate-100 focus:border-brand-400"
             />
           )}
           <select
@@ -271,7 +271,7 @@ export function FacilitiesView(props?: {
 
       {!loading && !error && searched && total !== null && (
         <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
-          <p className="text-sm text-slate-500 dark:text-slate-400 dark:text-slate-500">
+          <p className="text-sm text-slate-500 dark:text-slate-400">
             Znaleziono <strong className="text-slate-800 dark:text-slate-100">{total}</strong> placówek
             {total > results.length && ` — pokazuję ${results.length}, zawęź kryteria (np. nazwą)`}.
             {props?.queueBenefit &&
@@ -381,7 +381,7 @@ export function FacilitiesView(props?: {
       )}
 
       {!loading && !error && searched && total === 0 && (
-        <p className="mt-6 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 text-center text-sm text-slate-500 dark:text-slate-400 dark:text-slate-500 shadow-card">
+        <p className="mt-6 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 text-center text-sm text-slate-500 dark:text-slate-400 shadow-card">
           Brak placówek dla podanych kryteriów — zmień nazwę lub województwo.
         </p>
       )}

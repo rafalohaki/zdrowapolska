@@ -67,6 +67,8 @@ export default function App() {
       const targets = province === 'all' ? FETCH_ORDER : [province];
       setTargetsTotal(targets.length);
       const queue = [...targets];
+      let failed = 0;
+      let historyPushed = false;
 
       const worker = async () => {
         while (queue.length > 0) {
@@ -75,10 +77,14 @@ export default function App() {
           try {
             const data = await fetchProvinceQueues(benefit, code, kase, locality);
             if (startedFor.current !== key) return;
-            setHistory(pushHistory(benefit, locality));
+            if (!historyPushed) {
+              historyPushed = true;
+              setHistory(pushHistory(benefit, locality));
+            }
             setProvinces((prev) => sortProvinces([...prev.filter((p) => p.code !== code), data]));
           } catch (err) {
             if (startedFor.current !== key) return;
+            failed += 1;
             // województwo z błędem pomijamy, ale pokazujemy stan (0 rekordów)
             setProvinces((prev) => [
               ...prev.filter((p) => p.code !== code),
@@ -91,7 +97,12 @@ export default function App() {
       };
 
       await Promise.all(Array.from({ length: Math.min(CLIENT_CONCURRENCY, queue.length) }, worker));
-      if (startedFor.current === key) setLoading(false);
+      if (startedFor.current !== key) return;
+      setLoading(false);
+      // wszystkie województwa padły (backend/API NFZ niedostępne) — to błąd, nie „brak wyników"
+      if (failed === targets.length) {
+        setError('Nie udało się pobrać danych z NFZ. Sprawdź połączenie i spróbuj ponownie.');
+      }
     },
     [],
   );
@@ -103,27 +114,28 @@ export default function App() {
   }, []);
 
   const update = (patch: Partial<SearchState>) => {
-    setState((prev) => {
-      const next = { ...prev, ...patch };
-      sync(next);
-      const refetch =
-        (patch.kase !== undefined && patch.kase !== prev.kase) ||
-        (patch.locality !== undefined && patch.locality !== prev.locality);
-      if (refetch && next.benefit) {
-        void runSearch(next.benefit, next.kase, next.locality, next.province);
-      }
-      // zmiana województwa: jeśli tego województwa nie mamy w danych, dociągnij je (z bazy lub NFZ)
-      if (
-        patch.province !== undefined &&
-        patch.province !== prev.province &&
-        next.benefit &&
-        patch.province !== 'all' &&
-        !provincesRef.current.some((p) => p.code === patch.province)
-      ) {
-        void runSearch(next.benefit, next.kase, next.locality, patch.province);
-      }
-      return next;
-    });
+    const next = { ...state, ...patch };
+    setState(next);
+    sync(next);
+    // side-effecty poza updaterem stanu: w StrictMode updater działa dwukrotnie
+    // i podwajałoby to zapytania do NFZ
+    const refetch =
+      (patch.kase !== undefined && patch.kase !== state.kase) ||
+      (patch.locality !== undefined && patch.locality !== state.locality);
+    if (refetch && next.benefit) {
+      void runSearch(next.benefit, next.kase, next.locality, next.province);
+    }
+    // zmiana województwa: jeśli nie mamy dla niego realnych danych (brak wpisu lub
+    // placeholder po błędzie), dociągnij je (z bazy lub NFZ)
+    if (
+      patch.province !== undefined &&
+      patch.province !== state.province &&
+      next.benefit &&
+      patch.province !== 'all' &&
+      !provincesRef.current.some((p) => p.code === patch.province && p.records.length > 0)
+    ) {
+      void runSearch(next.benefit, next.kase, next.locality, patch.province);
+    }
   };
 
   const search = (benefit: string, locality?: string) => {
@@ -273,7 +285,7 @@ export default function App() {
             <h1 className="text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white sm:text-5xl">
               Gdzie do <span className="text-brand-600">specjalisty</span> najszybciej?
             </h1>
-            <p className="mt-4 max-w-xl text-lg text-slate-500 dark:text-slate-400 dark:text-slate-500">
+            <p className="mt-4 max-w-xl text-lg text-slate-500 dark:text-slate-400">
               Porównujemy <strong>oficjalne czasy oczekiwania NFZ</strong> w 16 województwach. Wpisz
               specjalizację i zobacz, gdzie kolejka jest najkrótsza — z filtrem dostępności i doradcą AI.
             </p>
@@ -328,7 +340,7 @@ export default function App() {
               <div>
                 <h2 className="text-lg font-bold text-slate-900 dark:text-white">
                   „{state.benefit}"
-                  <span className="ml-2 text-sm font-normal text-slate-500 dark:text-slate-400 dark:text-slate-500">
+                  <span className="ml-2 text-sm font-normal text-slate-500 dark:text-slate-400">
                     {state.locality ? state.locality : state.province === 'all' ? 'cała Polska' : `woj. ${provinceName(state.province)}`}
                     {state.kase === 2 && ' • przypadek pilny'}
                   </span>

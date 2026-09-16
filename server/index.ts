@@ -28,6 +28,17 @@ import { GSL_CATEGORIES, gslFacilities, type GslCategory } from './gsl';
 
 const app = new Hono();
 
+/** Liczba z query z clampem — Number('abc') = NaN psułoby limity, klucze cache'i treść zapytań. */
+function intParam(raw: string | undefined, def: number, min: number, max: number): number {
+  const n = Number(raw);
+  return Number.isFinite(n) ? Math.max(min, Math.min(Math.floor(n), max)) : def;
+}
+
+/** Obetnij input użytkownika — trafia do kluczy cache, promptów AI i zapytań upstream. */
+function cut(raw: string, max: number): string {
+  return raw.slice(0, max);
+}
+
 const corsOrigins = (process.env.CORS_ORIGIN ?? '*')
   .split(',')
   .map((s) => s.trim())
@@ -50,8 +61,9 @@ app.use(
 // (w Hono handler trasy kończy łańcuch; middleware zarejestrowany później nie działa)
 app.use('/api/*', async (c, next) => {
   await next();
-  if (c.req.method !== 'GET' || c.res.status >= 400) {
-    // błędów nigdy nie cache'ujemy (ani w CF, ani w przeglądarce)
+  // cache'ujemy wyłącznie czyste 200; błędy i 202 („raport w trakcie generowania")
+  // nie mogą utknąć w przeglądarce/CF na czas TTL
+  if (c.req.method !== 'GET' || c.res.status !== 200) {
     c.header('Cache-Control', 'no-store');
     return;
   }
@@ -78,8 +90,8 @@ app.get('/api/health', (c) =>
 
 // Wyszukiwarka świadczeń (Meilisearch z synonimami i literówkami; fallbacki: SQLite → NFZ)
 app.get('/api/search', async (c) => {
-  const q = (c.req.query('q') ?? c.req.query('name') ?? '').trim();
-  const limit = Math.max(1, Math.min(Number(c.req.query('limit') ?? 25), 25));
+  const q = cut((c.req.query('q') ?? c.req.query('name') ?? '').trim(), 80);
+  const limit = intParam(c.req.query('limit'), 25, 1, 25);
   if (q.length < 3) return c.json({ items: [], count: 0, source: 'meilisearch' });
   const res = await cached(`search:${q.toLowerCase()}:${limit}`, 10 * 60 * 1000, () =>
     searchBenefits(q, limit),
@@ -89,7 +101,7 @@ app.get('/api/search', async (c) => {
 
 // Kompatybilność ze starym kształtem (słownik po fragmencie)
 app.get('/api/benefits', async (c) => {
-  const name = (c.req.query('name') ?? '').trim();
+  const name = cut((c.req.query('name') ?? '').trim(), 80);
   if (name.length < 3) return c.json({ items: [], count: 0 });
   const res = await cached(`search:${name.toLowerCase()}:25`, TTL.dictionaries, () =>
     searchBenefits(name, 25),
@@ -119,9 +131,55 @@ function assembleFromDb(
   };
 }
 
+/** Świeży zbiór CZĘŚCIOWY z bazy: dociąga tylko brakujące województwa z NFZ (indywidualnie,
+ *  zamiast powtarzać cały compare). Te, które znów padły, trafiają do errors — i tak
+ *  zostaną zapisane te, które się udały, więc następne zapytania dociągają coraz mniej. */
+async function assemblePartialFromDb(
+  benefit: string,
+  kase: 1 | 2,
+  pages: number,
+  locality: string,
+  snaps: ReturnType<typeof getSnapshots>,
+): Promise<CompareResponse> {
+  const have = new Map(snaps.map((s) => [s.code, s]));
+  const missing = PROVINCES.filter((p) => !have.has(p.code));
+  const errors: { code: string; message: string }[] = [];
+  const fetched = await Promise.all(
+    missing.map(async (p) => {
+      try {
+        const d = await getProvinceQueues(benefit, p.code, kase, pages, locality);
+        saveSnapshot(benefit, p.code, kase, d.total, d.records, locality);
+        return d;
+      } catch (err) {
+        errors.push({ code: p.code, message: err instanceof Error ? err.message : String(err) });
+        return null;
+      }
+    }),
+  );
+  const fetchedByCode = new Map(
+    fetched.filter((d): d is NonNullable<typeof d> => d !== null).map((d) => [d.code, d]),
+  );
+  return {
+    benefit,
+    case: kase,
+    provinces: PROVINCES.map((p) => {
+      const f = fetchedByCode.get(p.code);
+      if (f) return { code: p.code, name: p.name, total: f.total, records: f.records };
+      const s = have.get(p.code);
+      return {
+        code: p.code,
+        name: p.name,
+        total: s?.total ?? 0,
+        records: (s?.records ?? []).map((r) => slimRecord(r as NfzRecord)),
+      };
+    }),
+    errors,
+  };
+}
+
 // Autouzupełnianie miejscowości (jak „Gdzie się leczyć" NFZ)
 app.get('/api/localities', async (c) => {
-  const name = (c.req.query('name') ?? '').trim();
+  const name = cut((c.req.query('name') ?? '').trim(), 60);
   if (name.length < 3) return c.json({ items: [] });
   const items = await cached(`localities:${name.toLowerCase()}`, TTL.dictionaries, () =>
     getLocalities(name),
@@ -132,21 +190,26 @@ app.get('/api/localities', async (c) => {
 // Porównanie 16 województw: najpierw świeży snapshot z SQLite (natychmiast),
 // w przeciwnym razie żywe pobranie z NFZ (+ zapis snapshotu na przyszłość).
 app.get('/api/compare', async (c) => {
-  const benefit = (c.req.query('benefit') ?? '').trim();
+  const benefit = cut((c.req.query('benefit') ?? '').trim(), 120);
   const kase = c.req.query('case') === '2' ? 2 : 1;
-  const pages = Math.max(1, Math.min(Number(c.req.query('pages') ?? '2'), 4));
-  const locality = (c.req.query('locality') ?? '').trim().toUpperCase();
+  const pages = intParam(c.req.query('pages'), 2, 1, 4);
+  const locality = cut((c.req.query('locality') ?? '').trim().toUpperCase(), 60);
   if (benefit.length < 3) {
     return c.json({ error: 'Podaj świadczenie (min. 3 znaki)' }, 400);
   }
 
   const ttlH = Number(process.env.SNAPSHOT_TTL_H ?? 24);
   const age = snapshotAgeHours(benefit, kase, locality);
-  if (age !== null && age <= ttlH && snapshotProvinces(benefit, kase, locality) === PROVINCES.length) {
+  const saved = snapshotProvinces(benefit, kase, locality);
+  if (age !== null && age <= ttlH && saved > 0) {
     const snaps = getSnapshots(benefit, kase, locality);
+    const dbKey = `dbcompare:${benefit}:${kase}:${pages}:${locality}`;
+    if (saved >= PROVINCES.length) {
+      return c.json(await cached(dbKey, TTL.dbCompare, async () => assembleFromDb(benefit, kase, snaps)));
+    }
     return c.json(
-      await cached(`dbcompare:${benefit}:${kase}:${locality}`, TTL.dbCompare, async () =>
-        assembleFromDb(benefit, kase, snaps),
+      await cached(dbKey, TTL.dbCompare, async () =>
+        assemblePartialFromDb(benefit, kase, pages, locality, snaps),
       ),
     );
   }
@@ -154,18 +217,23 @@ app.get('/api/compare', async (c) => {
   const data = await cached(`compare:${benefit}:${kase}:${pages}:${locality}`, TTL.queues, () =>
     getCompare(benefit, kase, pages, locality),
   );
-  // snapshot per województwo — następne zapytania lecą z bazy
-  for (const p of data.provinces) saveSnapshot(benefit, p.code, kase, p.total, p.records, locality);
+  // snapshot per województwo — następne zapytania lecą z bazy.
+  // Województwa z błędem (429/sieć) pomijamy: pusty snapshot z 0 rekordów przetrwałby
+  // w cache 24 h jako "świeży" i zamrażał dziurę w wynikach.
+  const failed = new Set(data.errors.map((e) => e.code));
+  for (const p of data.provinces) {
+    if (!failed.has(p.code)) saveSnapshot(benefit, p.code, kase, p.total, p.records, locality);
+  }
   return c.json(data);
 });
 
 // Pojedyncze województwo: baza (jeśli świeże) → NFZ. Do ładowania progresywnego.
 app.get('/api/queues-province', async (c) => {
-  const benefit = (c.req.query('benefit') ?? '').trim();
+  const benefit = cut((c.req.query('benefit') ?? '').trim(), 120);
   const province = (c.req.query('province') ?? '').trim();
   const kase = c.req.query('case') === '2' ? 2 : 1;
-  const pages = Math.max(1, Math.min(Number(c.req.query('pages') ?? '2'), 4));
-  const locality = (c.req.query('locality') ?? '').trim().toUpperCase();
+  const pages = intParam(c.req.query('pages'), 2, 1, 4);
+  const locality = cut((c.req.query('locality') ?? '').trim().toUpperCase(), 60);
   if (benefit.length < 3 || !PROVINCES.some((p) => p.code === province)) {
     return c.json({ error: 'benefit (min. 3 znaki) i poprawny kod province wymagane' }, 400);
   }
@@ -197,8 +265,7 @@ app.get('/api/facilities', async (c) => {
   const category = (c.req.query('category') ?? 'apteki') as GslCategory;
   const province = (c.req.query('province') ?? '').trim();
   const name = (c.req.query('name') ?? '').trim().slice(0, 80);
-  const rawPage = Number(c.req.query('page') ?? '1');
-  const page = Number.isFinite(rawPage) ? Math.max(1, Math.min(Math.floor(rawPage), 20)) : 1;
+  const page = intParam(c.req.query('page'), 1, 1, 20);
   if (!(category in GSL_CATEGORIES)) {
     return c.json({ error: `category: ${Object.keys(GSL_CATEGORIES).join(' | ')}` }, 400);
   }
@@ -223,7 +290,7 @@ app.get('/api/facilities', async (c) => {
 
 // Autouzupełnianie miast dla widoku powietrza (z cache stacji, bez NFZ/GIOŚ w locie)
 app.get('/api/air-stations', async (c) => {
-  const locality = (c.req.query('locality') ?? '').trim();
+  const locality = cut((c.req.query('locality') ?? '').trim(), 60);
   if (locality.length < 3) return c.json({ items: [] });
   const { airStationsByLocality } = await import('./air');
   const items = await cached(`air-stations:${locality.toLowerCase()}`, 60 * 60 * 1000, () =>
@@ -234,7 +301,7 @@ app.get('/api/air-stations', async (c) => {
 
 // Jakość powietrza GIOŚ — „czy dziś bezpieczny trening?"
 app.get('/api/air', async (c) => {
-  const locality = (c.req.query('locality') ?? '').trim();
+  const locality = cut((c.req.query('locality') ?? '').trim(), 60);
   const stationId = Number(c.req.query('station') ?? 0);
   const { airForLocality, airForStation } = await import('./air');
   if (stationId > 0) {
@@ -267,14 +334,22 @@ app.post('/api/ai', async (c) => {
   if (!body?.benefit || !Array.isArray(body.results)) {
     return c.json({ error: 'Oczekiwano JSON: { benefit, results, question? }' }, 400);
   }
-  return c.json(await advise(body));
+  // twardy limit tego, co wpada do promptu — userPrompt i tak bierze slice(0,12)
+  const req: AiRequest = {
+    benefit: String(body.benefit).slice(0, 120),
+    question: typeof body.question === 'string' ? body.question.slice(0, 500) : undefined,
+    results: body.results.slice(0, 20),
+  };
+  return c.json(await advise(req));
 });
 
 // Geokodowanie batch (Nominatim + cache SQLite)
 app.post('/api/geocode', async (c) => {
   const { geocodeBatch } = await import('./geocode');
   const body = (await c.req.json<{ addresses?: string[] }>().catch(() => null)) ?? null;
-  const addresses = Array.isArray(body?.addresses) ? body.addresses.filter((a) => typeof a === 'string') : [];
+  const addresses = Array.isArray(body?.addresses)
+    ? body.addresses.filter((a) => typeof a === 'string').map((a) => a.trim().slice(0, 200)).filter(Boolean)
+    : [];
   if (addresses.length === 0 || addresses.length > 20) {
     return c.json({ error: 'addresses: 1–20 adresów' }, 400);
   }
@@ -282,8 +357,13 @@ app.post('/api/geocode', async (c) => {
   return c.json({ results });
 });
 
-// Ręczny rebuild indeksu wyszukiwania z lokalnej bazy (bez dotykania NFZ)
+// Ręczny rebuild indeksu wyszukiwania z lokalnej bazy (bez dotykania NFZ).
+// Operacja serwisowa — gdy ustawiono SYNC_TOKEN, wymagaj go jak przy synchronizacji.
 app.post('/api/search/reindex', async (c) => {
+  const token = process.env.SYNC_TOKEN;
+  if (token && c.req.query('token') !== token) {
+    return c.json({ error: 'Nieprawidłowy token' }, 401);
+  }
   const { allBenefits } = await import('./db');
   const { purgeKeys } = await import('./cache');
   const names = allBenefits();
