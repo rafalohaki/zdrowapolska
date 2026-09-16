@@ -18,6 +18,11 @@ describe('parsePcus', () => {
     expect(parsePcus('rok')).toBe(365);
     expect(parsePcus('12 miesięcy')).toBe(365);
   });
+  test('mnożnik lat — „2 lata" to 730, nie 365', () => {
+    expect(parsePcus('2 lata')).toBe(730);
+    expect(parsePcus('1 rok')).toBe(365);
+    expect(parsePcus('3 lata')).toBe(1095);
+  });
   test('nieznane wartości → null', () => {
     expect(parsePcus('brak danych')).toBeNull();
     expect(parsePcus('')).toBeNull();

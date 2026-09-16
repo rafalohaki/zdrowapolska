@@ -23,7 +23,8 @@ Demo: filtr ♿ Rampa → mapa → AI „która placówka najlepsza dla osoby na
 - **Effect v4**: rate-limiting, retry i timeout jako typowane wartości —NFZ 429-uje, a nasza apka tego nawet nie zauważa
 - **SQLite + Redis + Meilisearch**: odpowiedzi z bazy w ~20 ms zamiast 46 s z NFZ; pełny tekst z synonimami („dentysta" znajduje stomatologię)
 - **Uczciwy scraper**: 1 żądanie/60 ms, harmonogram co 12 h — nie spamujemy publicznego API i świadomie nie rotujemy IP
-- 21 testów, TypeScript strict
+- **Odporność**: rate-limit per IP na ciężkich endpointach, snapshoty zamiast żywych zapytań, graceful degradation (Redis/Meili/AI opcjonalne)
+- 36 testów (31 jednostkowych + 5 E2E), TypeScript strict, CI na każdym pushu
 
 ## 3:30–4:15 — Uczciwość = zaufanie
 - Widoczny disclaimer: statystyki miesięczne, potwierdź telefonicznie, to nie porada medyczna

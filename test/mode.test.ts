@@ -14,4 +14,10 @@ describe('modeFromUrl', () => {
     expect(modeFromUrl('?b=KARDIOLOG')).toBe('terminy');
     expect(modeFromUrl('?mode=nieznany')).toBe('terminy');
   });
+
+  test('nie łapie fałszywych trafień (regresja: substring match)', () => {
+    expect(modeFromUrl('?xmode=wsparcie')).toBe('terminy');
+    expect(modeFromUrl('?mode=wsparcie2')).toBe('terminy');
+    expect(modeFromUrl('?mode=terminy&other=x')).toBe('terminy');
+  });
 });

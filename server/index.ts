@@ -1,7 +1,8 @@
-import { Hono } from 'hono';
+import { Hono, type Context, type Next } from 'hono';
 import { cors } from 'hono/cors';
 import { compress } from 'hono/compress';
 import { logger } from 'hono/logger';
+import { secureHeaders } from 'hono/secure-headers';
 import { cached, cacheStats, TTL } from './cache';
 import {
   getCompare,
@@ -47,6 +48,8 @@ const corsOrigins = (process.env.CORS_ORIGIN ?? '*')
 app.use('/api/*', logger());
 // duże JSON-y (porównania 16 woj. ~850 KB) — gzip tnie to do ~100 KB
 app.use('/api/*', compress());
+// nosniff, Referrer-Policy, X-Frame-Options — na odpowiedziach JSON nieszkodliwe, na statycznym SPA pomocne
+app.use('/api/*', secureHeaders());
 app.use(
   '/api/*',
   cors({
@@ -83,6 +86,44 @@ app.onError((err, c) => {
   console.error('[api]', err);
   return c.json({ error: err.message ?? 'Błąd serwera' }, 500);
 });
+
+// --- Rate limiter per IP (okno 60 s) -----------------------------------------
+// Endpointy zapalające upstream (NFZ/GIOŚ/Nominatim/LLM) nie mogą być spamowane
+// w pętli — na produkcji stoi za tym jeszcze limit na edge (Cloudflare).
+const rlBuckets = new Map<string, number[]>();
+const rlSweep = setInterval(() => {
+  const cutoff = Date.now() - 60_000;
+  for (const [k, ts] of rlBuckets) {
+    const kept = ts.filter((t) => t > cutoff);
+    if (kept.length) rlBuckets.set(k, kept);
+    else rlBuckets.delete(k);
+  }
+}, 60_000);
+rlSweep.unref?.();
+
+function clientIp(c: Context): string {
+  return (
+    c.req.header('cf-connecting-ip') ??
+    c.req.header('x-real-ip') ??
+    c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ??
+    'anon'
+  );
+}
+
+function limit(perMinute: number) {
+  return async (c: Context, next: Next) => {
+    const key = `${c.req.path}:${clientIp(c)}`;
+    const now = Date.now();
+    const ts = (rlBuckets.get(key) ?? []).filter((t) => t > now - 60_000);
+    if (ts.length >= perMinute) {
+      c.header('Retry-After', '60');
+      return c.json({ error: 'Za dużo zapytań — odczekaj chwilę i spróbuj ponownie.' }, 429);
+    }
+    ts.push(now);
+    rlBuckets.set(key, ts);
+    await next();
+  };
+}
 
 app.get('/api/health', (c) =>
   c.json({ ok: true, service: 'zdrowapolska-backend', cache: cacheStats(), db: dbStats() }),
@@ -189,7 +230,7 @@ app.get('/api/localities', async (c) => {
 
 // Porównanie 16 województw: najpierw świeży snapshot z SQLite (natychmiast),
 // w przeciwnym razie żywe pobranie z NFZ (+ zapis snapshotu na przyszłość).
-app.get('/api/compare', async (c) => {
+app.get('/api/compare', limit(12), async (c) => {
   const benefit = cut((c.req.query('benefit') ?? '').trim(), 120);
   const kase = c.req.query('case') === '2' ? 2 : 1;
   const pages = intParam(c.req.query('pages'), 2, 1, 4);
@@ -228,7 +269,8 @@ app.get('/api/compare', async (c) => {
 });
 
 // Pojedyncze województwo: baza (jeśli świeże) → NFZ. Do ładowania progresywnego.
-app.get('/api/queues-province', async (c) => {
+// jeden search odpala do 16 takich zapytań (progresywne ładowanie województw) — limit szeroki
+app.get('/api/queues-province', limit(90), async (c) => {
   const benefit = cut((c.req.query('benefit') ?? '').trim(), 120);
   const province = (c.req.query('province') ?? '').trim();
   const kase = c.req.query('case') === '2' ? 2 : 1;
@@ -261,7 +303,7 @@ app.get('/api/queues-province', async (c) => {
 });
 
 // Placówki NFZ z „Gdzie się leczyć": apteki, SOR, izby przyjęć, nocna pomoc
-app.get('/api/facilities', async (c) => {
+app.get('/api/facilities', limit(30), async (c) => {
   const category = (c.req.query('category') ?? 'apteki') as GslCategory;
   const province = (c.req.query('province') ?? '').trim();
   const name = (c.req.query('name') ?? '').trim().slice(0, 80);
@@ -316,8 +358,14 @@ app.get('/api/air', async (c) => {
   if (locality.length < 3) {
     return c.json({ error: 'Podaj miejscowość (min. 3 znaki)' }, 400);
   }
-  // bez cached(): puste wyniki dla nietrafionych zapytań nie mogą zatruwać cache'a
-  const data = await airForLocality(locality);
+  // trafienia cache'ujemy 30 min; nietrafione zapytania nie mogą zatruwać cache'a
+  // (ani dowolny wpisany string nie może na pół godziny zamrażać odpowiedzi)
+  const data = await cached(
+    `air:locality:${locality.toLowerCase()}`,
+    30 * 60 * 1000,
+    () => airForLocality(locality),
+    (r) => r.station !== null,
+  );
   return c.json(data);
 });
 
@@ -360,7 +408,7 @@ function cleanRecord(r: unknown): CompactRecord {
 }
 
 // Doradca AI (Groq/OpenRouter z lokalnym fallbackiem)
-app.post('/api/ai', async (c) => {
+app.post('/api/ai', limit(10), async (c) => {
   const body = (await c.req.json<AiRequest>().catch(() => null)) as AiRequest | null;
   if (!body?.benefit || !Array.isArray(body.results)) {
     return c.json({ error: 'Oczekiwano JSON: { benefit, results, question? }' }, 400);
@@ -378,7 +426,7 @@ app.post('/api/ai', async (c) => {
 });
 
 // Geokodowanie batch (Nominatim + cache SQLite)
-app.post('/api/geocode', async (c) => {
+app.post('/api/geocode', limit(10), async (c) => {
   const { geocodeBatch } = await import('./geocode');
   const body = (await c.req.json<{ addresses?: string[] }>().catch(() => null)) ?? null;
   const addresses = Array.isArray(body?.addresses)
@@ -408,7 +456,7 @@ app.post('/api/search/reindex', async (c) => {
 
 // Synchronizacja (scraper)
 app.get('/api/sync/status', (c) => c.json(getSyncStatus()));
-app.post('/api/sync/trigger', async (c) => {
+app.post('/api/sync/trigger', limit(5), async (c) => {
   // opcjonalna ochrona: ustaw SYNC_TOKEN, by obcy nie odpalali synchronizacji
   const token = process.env.SYNC_TOKEN;
   if (token && c.req.query('token') !== token) {
@@ -429,6 +477,11 @@ const port = Number(process.env.PORT ?? 2363);
 
 console.log(`▶ zdrowapolska-backend nasłuchuje na 0.0.0.0:${port}`);
 startSyncScheduler();
+// Prewarm listy stacji GIOŚ w tle (~20 stron z pacingiem) — pierwsze wejście
+// w zakładkę „Powietrze" nie czeka ~30 s na zimny cache
+void import('./air')
+  .then((m) => m.allStations())
+  .catch(() => undefined);
 
 export default {
   port,

@@ -48,8 +48,16 @@ async function redisSet(key: string, value: string, ttlSeconds: number): Promise
   }
 }
 
-/** Cache-first loader: Redis → pamięć → loader (z deduplikacją zapytań in-flight). */
-export async function cached<T>(key: string, ttlMs: number, loader: () => Promise<T>): Promise<T> {
+/**
+ * Cache-first loader: Redis → pamięć → loader (z deduplikacją zapytań in-flight).
+ * `shouldCache` pozwala pominąć zapis (np. puste wyniki wyszukiwania nie zatruwają cache'a).
+ */
+export async function cached<T>(
+  key: string,
+  ttlMs: number,
+  loader: () => Promise<T>,
+  shouldCache: (value: T) => boolean = () => true,
+): Promise<T> {
   const now = Date.now();
 
   const running = inflight.get(key);
@@ -65,6 +73,7 @@ export async function cached<T>(key: string, ttlMs: number, loader: () => Promis
       return JSON.parse(raw) as T;
     }
     const value = await loader();
+    if (!shouldCache(value)) return value;
     const serialized = JSON.stringify(value);
     memory.set(key, { value: serialized, expires: Date.now() + ttlMs });
     if (memory.size > 500) {

@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "bun run dev:backend & bun run dev:frontend",
+    "dev": "bun scripts/dev.ts",
     "dev:backend": "bun --hot server/index.ts",
     "dev:frontend": "bunx vite",
     "build": "vite build",
