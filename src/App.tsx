@@ -206,14 +206,33 @@ export default function App() {
   );
 
   const copyLink = async () => {
+    // mobilne: natywny share sheet; desktop/brak wsparcia: schowek
     try {
+      if (navigator.share) {
+        await navigator.share({ url: location.href, title: document.title });
+        return;
+      }
       await navigator.clipboard.writeText(location.href);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      /* brak uprawnień — URL i tak jest w pasku adresu */
+      /* abort share sheetu lub brak uprawnień — URL i tak jest w pasku adresu */
     }
   };
+
+  // skrót „/" — focus na pole wyszukiwania (klasyczny pattern, zero kosztu)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== '/' || modeRef.current !== 'terminy') return;
+      const el = e.target as HTMLElement;
+      if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)
+        return;
+      e.preventDefault();
+      document.getElementById('benefit-input')?.focus();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
 
   const facilities = useMemo<Facility[]>(() => {
     if (provinces.length === 0) return [];
@@ -241,6 +260,12 @@ export default function App() {
 
   return (
     <div className="flex min-h-screen flex-col">
+      <a
+        href="#tresc"
+        className="sr-only z-50 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white focus:not-sr-only focus:absolute focus:top-2 focus:left-2"
+      >
+        Przejdź do treści
+      </a>
       <Header
         mode={mode}
         onMode={goMode}
@@ -256,7 +281,7 @@ export default function App() {
           window.scrollTo({ top: 0 });
         }}
       />
-      <main className="flex-1">
+      <main id="tresc" className="flex-1">
         {mode === 'raport' ? (
           <Suspense fallback={<PageLoader />}>
             <ReportView />
@@ -345,7 +370,7 @@ export default function App() {
                     {state.kase === 2 && ' • przypadek pilny'}
                   </span>
                 </h2>
-                <p className="text-sm text-slate-500 dark:text-slate-400">
+                <p className="text-sm text-slate-500 dark:text-slate-400" aria-live="polite">
                   {loading && facilities.length === 0
                     ? 'pobieram dane…'
                     : `${facilities.length} placówek`}

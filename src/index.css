@@ -52,6 +52,19 @@ body {
 :focus-visible {
   @apply outline-2 outline-offset-2 outline-brand-600;
 }
+
+/* użytkownicy z preferencją ograniczenia ruchu — zero animacji */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+  html {
+    scroll-behavior: auto;
+  }
+}
 /* Druk listy placówek (przycisk „Drukuj listę"): na papier trafia treść, nie aplikacja. */
 @media print {
   header,

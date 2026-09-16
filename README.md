@@ -66,11 +66,19 @@ Dlaczego proxy: API NFZ **nie wysyła nagłówków CORS** i **rate-limituje po I
 | Endpoint | Opis |
 |---|---|
 | `GET /api/search?q=` | wyszukiwarka świadczeń (Meilisearch: literówki + synonimy PL; fallback: SQLite → NFZ) |
+| `GET /api/benefits?q=` · `GET /api/localities?q=` | autouzupełnianie świadczeń i miejscowości |
 | `GET /api/compare?benefit=&case=` | porównanie 16 województw (najpierw SQLite, potem NFZ; zapisuje snapshoty) |
+| `GET /api/queues-province?benefit=&province=` | kolejki jednego województwa (progresywne ładowanie na froncie) |
+| `GET /api/facilities?locality=&benefit=` | placówki z NFZ GSL „Gdzie się leczyć" (telefony, adresy, nocna pomoc) |
+| `GET /api/air?locality=` · `GET /api/air-stations?locality=` | jakość powietrza GIOŚ + lista stacji pomiarowych |
+| `POST /api/geocode` | geokodowanie adresów przez Nominatim (cache + fair-use 1 req/s) |
+| `GET /api/insights` | raport ogólnopolski — agregaty z bazy snapshotów |
 | `POST /api/ai` | doradca AI (`groq/compound`; fallback heurystyczny bez kluczy) |
-| `GET /api/sync/status` · `POST /api/sync/trigger?scope=benefits\|queues\|all` | stan i sterowanie scraperem |
+| `GET /api/sync/status` · `POST /api/sync/trigger?scope=benefits\|queues\|all` | stan i sterowanie scraperem (trigger wymaga `SYNC_TOKEN`, jeśli ustawiony) |
 | `POST /api/search/reindex` | przebudowa indeksu Meilisearch z lokalnej bazy (wymaga `SYNC_TOKEN`, jeśli ustawiony) |
 | `GET /api/health` | health + statystyki bazy/cache |
+
+Endpointy zapalające upstream (NFZ/GIOŚ/Nominatim/LLM) mają rate-limit per IP — `compare` 12/min, `queues-province` 90/min, `facilities` 30/min, `geocode` i `ai` 10/min, `sync/trigger` 5/min (odpowiedź 429 + `Retry-After`).
 
 ## 🚀 Szybki start
 
