@@ -313,7 +313,9 @@ app.get('/api/facilities', limit(30), async (c) => {
   const category = (c.req.query('category') ?? 'apteki') as GslCategory;
   const province = (c.req.query('province') ?? '').trim();
   const name = (c.req.query('name') ?? '').trim().slice(0, 80);
-  const page = intParam(c.req.query('page'), 1, 1, 20);
+  // 68 = wewnętrzny limit GSL; niższy clamp psuł „Pokaż więcej" — żądanie str. 21
+  // ścinało do 20 i frontend doklejał tę samą stronę drugi raz (duplikaty)
+  const page = intParam(c.req.query('page'), 1, 1, 68);
   if (!(category in GSL_CATEGORIES)) {
     return c.json({ error: `category: ${Object.keys(GSL_CATEGORIES).join(' | ')}` }, 400);
   }
@@ -358,7 +360,13 @@ app.get('/api/air', async (c) => {
   }
   const { airForLocality, airForStation } = await import('./air');
   if (stationId > 0) {
-    const data = await cached(`air:station:${stationId}`, 30 * 60 * 1000, () => airForStation(stationId));
+    // jak przy locality: nietrafione id stacji nie zatruwają cache'a na 30 min
+    const data = await cached(
+      `air:station:${stationId}`,
+      30 * 60 * 1000,
+      () => airForStation(stationId),
+      (r) => r.station !== null,
+    );
     return c.json(data);
   }
   if (locality.length < 3) {

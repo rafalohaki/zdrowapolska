@@ -164,6 +164,13 @@ export function ReportView() {
           </p>
         </>
       )}
+
+      {!loading && !error && report && report.items.length === 0 && (
+        <p className="mt-6 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 text-center text-sm text-slate-500 dark:text-slate-400 shadow-card">
+          Raport istnieje, ale nie zawiera jeszcze danych — synchronizacja kolejek nie zebrała
+          świadczeń objętych raportem.
+        </p>
+      )}
     </section>
   );
 }

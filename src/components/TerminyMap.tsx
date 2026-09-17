@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { geocodeBatch } from '../lib/api';
 import { formatDaysShort, waitLevel } from '../lib/wait';
+import { escapeHtml, telHref } from '../lib/html';
 import type { Facility } from '../lib/types';
 import type * as LType from 'leaflet';
 import { loadLeaflet } from './leaflet-loader';
@@ -45,12 +46,29 @@ export function TerminyMap({
   const mapRef = useRef<LType.Map | null>(null);
   const [resolving, setResolving] = useState(false);
   const triedRef = useRef<Set<string>>(new Set());
+  const [retryTick, setRetryTick] = useState(0);
+  const failStreakRef = useRef(0);
   // nowe wyszukiwanie (mapKey) = nowa pula prób
   const keyRef = useRef(mapKey);
   if (keyRef.current !== mapKey) {
     keyRef.current = mapKey;
     triedRef.current = new Set();
+    failStreakRef.current = 0;
   }
+
+  // Leaflet przy unmount: remove() zdejmuje listenery window/document — bez tego
+  // każde wejście w widok mapy zostawiało wiszącą instancję
+  useEffect(
+    () => () => {
+      const m = mapRef.current;
+      if (m) {
+        lastFit.delete(m);
+        m.remove();
+        mapRef.current = null;
+      }
+    },
+    [],
+  );
 
   const resolved = useMemo<ResolvedFacility[]>(() => {
     return facilities.map((f) => {
@@ -78,11 +96,13 @@ export function TerminyMap({
       onResolve(pending.map((f) => ({ id: f.id })));
       return;
     }
+    let timer: ReturnType<typeof setTimeout> | undefined;
     for (const f of batch) triedRef.current.add(f.id);
     setResolving(true);
     void geocodeBatch(batch.map((f) => `${f.address}, ${f.locality}`.replace(/^,\s*/, '')))
       .then((res) => {
         if (!alive) return;
+        failStreakRef.current = 0;
         const updates = res
           .map((point, i) => (point ? { id: batch[i].id, lat: point.lat, lon: point.lon } : { id: batch[i].id }))
           .filter((u) => 'lat' in u) as { id: string; lat: number; lon: number }[];
@@ -92,14 +112,26 @@ export function TerminyMap({
         const all = [...updates, ...misses];
         if (all.length > 0 && alive) onResolve(all);
       })
-      .catch(() => undefined)
+      .catch(() => {
+        // awaria backendu / 429: cofnij marki i spróbuj ponownie z opóźnieniem —
+        // bez tego adresy zostawały na zawsze jako „pozostało N"
+        for (const f of batch) triedRef.current.delete(f.id);
+        failStreakRef.current += 1;
+        if (alive && failStreakRef.current <= 4) {
+          timer = setTimeout(() => {
+            if (alive) setRetryTick((t) => t + 1);
+          }, 8000);
+        }
+      })
       .finally(() => {
         if (alive) setResolving(false);
       });
     return () => {
       alive = false;
+      if (timer) clearTimeout(timer);
     };
-  }, [pending.length === 0 ? 'done' : pending.map((f) => f.id).join(','), onResolve]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pending.length === 0 ? 'done' : pending.map((f) => f.id).join(','), onResolve, retryTick]);
 
   // render mapy (Leaflet ładowany leniwie przy pierwszym otwarciu widoku)
   useEffect(() => {
@@ -176,11 +208,4 @@ function mapKeyChanged(map: LType.Map, key: string): boolean {
   return true;
 }
 
-function escapeHtml(text: string): string {
-  return text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
-}
 
-/** „+48 184 422 211" → „+48184422211" — bezpieczny href tel: (bez znaków łamiących atrybut HTML). */
-function telHref(phone: string): string {
-  return phone.replace(/[^\d+]/g, '');
-}

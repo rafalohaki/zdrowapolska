@@ -17,6 +17,7 @@ const { geocodeBatch } = await import('../server/geocode');
 const { normCity } = await import('../server/air');
 const { gslCity } = await import('../src/lib/matchQueues');
 const { facilitiesCsv } = await import('../src/lib/csv');
+const { paramsToState } = await import('../src/lib/search');
 
 describe('staleBenefits — sync odświeża najstarsze snapshoty pierwsze', () => {
   test('kolejność po MIN(fetched_at), nie alfabetyczna', () => {
@@ -162,5 +163,18 @@ describe('normCity — pusty wynik po normalizacji', () => {
   test('„!!!" normalizuje się do pustego stringa (nie dopasowuje wszystkich stacji)', () => {
     expect(normCity('!!!')).toBe('');
     expect(normCity('Łódź')).toBe('lodz');
+  });
+});
+
+describe('paramsToState — walidacja parametrów URL', () => {
+  test('nieznany kod województwa → all (zamiast cichych pustych wyników)', () => {
+    expect(paramsToState('?p=99&b=X').province).toBe('all');
+    expect(paramsToState('?p=06&b=X').province).toBe('06');
+    expect(paramsToState('?b=X').province).toBe('all');
+  });
+
+  test('nieznane klucze a11y są odrzucane (filtr „foo" zerowałby wyniki)', () => {
+    expect(paramsToState('?a=ramp,foo,toilet').a11y).toEqual(['ramp', 'toilet']);
+    expect(paramsToState('?a=foo').a11y).toEqual([]);
   });
 });

@@ -54,6 +54,7 @@ export function AirView() {
   const [query, setQuery] = useState('Kraków');
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [showSug, setShowSug] = useState(false);
+  const [highlight, setHighlight] = useState(-1);
   const [data, setData] = useState<AirData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -103,6 +104,7 @@ export function AirView() {
       fetchAirStations(q, ctrl.signal)
         .then((r) => {
           setSuggestions(r);
+          setHighlight(-1); // nowa lista — stary indeks mógłby wskazywać poza zakres
           if (r.length > 0) setShowSug(true);
         })
         .catch(() => undefined);
@@ -147,27 +149,60 @@ export function AirView() {
           onChange={(e) => {
             setQuery(e.target.value);
             setShowSug(true);
+            setHighlight(-1);
           }}
           onFocus={() => setShowSug(true)}
           onKeyDown={(e) => {
-            if (e.key === 'Escape') setShowSug(false);
+            const open = showSug && suggestions.length > 0;
+            if (e.key === 'Escape') {
+              setShowSug(false);
+            } else if (open && e.key === 'ArrowDown') {
+              e.preventDefault();
+              setHighlight((h) => (h + 1) % suggestions.length);
+            } else if (open && e.key === 'ArrowUp') {
+              e.preventDefault();
+              setHighlight((h) => (h - 1 + suggestions.length) % suggestions.length);
+            } else if (open && e.key === 'Enter') {
+              e.preventDefault();
+              const pick =
+                highlight >= 0 && highlight < suggestions.length
+                  ? suggestions[highlight]!
+                  : suggestions[0]!;
+              loadStation(pick);
+            }
           }}
           placeholder="Miejscowość, np. Kraków…"
           aria-label="Miejscowość"
+          role="combobox"
+          aria-expanded={showSug && suggestions.length > 0}
+          aria-controls="air-listbox"
+          aria-activedescendant={highlight >= 0 ? `air-opt-${suggestions[highlight]?.id}` : undefined}
           autoComplete="off"
           className="mt-2 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 text-sm shadow-card outline-none transition placeholder:text-slate-400 focus:border-brand-400"
         />
         {showSug && query.trim().length >= 3 && suggestions.length > 0 && (
-          <ul className="absolute z-30 mt-1 max-h-64 w-full overflow-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 py-1 shadow-lift">
-            {suggestions.map((st) => (
-              <li key={st.id}>
+          <ul
+            id="air-listbox"
+            role="listbox"
+            className="absolute z-30 mt-1 max-h-64 w-full overflow-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 py-1 shadow-lift"
+          >
+            {suggestions.map((st, i) => (
+              <li key={st.id} role="presentation">
                 <button
                   type="button"
+                  id={`air-opt-${st.id}`}
+                  role="option"
+                  aria-selected={i === highlight}
+                  onMouseEnter={() => setHighlight(i)}
                   onClick={() => {
                     setQuery(st.name);
                     loadStation(st);
                   }}
-                  className="block w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-brand-50 dark:hover:bg-brand-900/30"
+                  className={`block w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 ${
+                    i === highlight
+                      ? 'bg-brand-50 dark:bg-brand-900/30'
+                      : 'hover:bg-brand-50 dark:hover:bg-brand-900/30'
+                  }`}
                 >
                   {st.name}
                 </button>

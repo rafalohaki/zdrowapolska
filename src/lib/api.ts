@@ -132,6 +132,9 @@ export async function fetchAdvice(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ benefit, results, question: question?.trim() || undefined }),
   });
-  if (!res.ok) throw new Error(`Doradca AI: HTTP ${res.status}`);
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(body?.error ?? `Doradca AI: HTTP ${res.status}`);
+  }
   return (await res.json()) as AiResponse;
 }

@@ -2,6 +2,8 @@
   "name": "ZdrowaPolska — najkrótsza kolejka do specjalisty",
   "short_name": "ZdrowaPolska",
   "description": "Porównywarka czasów oczekiwania NFZ w 16 województwach: terminy, placówki, doradca AI.",
+  "id": "/",
+  "scope": "/",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#020617",

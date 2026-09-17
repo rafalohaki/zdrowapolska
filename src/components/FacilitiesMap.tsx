@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { geocodeBatch, type GeoPoint } from '../lib/api';
 import type { GslFacility } from '../lib/types';
+import { escapeHtml, telHref } from '../lib/html';
 import { formatDaysShort, waitLevel, type WaitLevel } from '../lib/wait';
 import type * as LType from 'leaflet';
 import { loadLeaflet } from './leaflet-loader';
@@ -49,15 +50,6 @@ const PROVINCE_VIEW: Record<string, { at: [number, number]; zoom: number }> = {
 };
 const DEFAULT_VIEW = { at: [51.92, 19.15] as [number, number], zoom: 6 };
 
-
-function escapeHtml(text: string): string {
-  return text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
-}
-
-/** „+48 184 422 211" → „+48184422211" — bezpieczny href tel: (bez znaków łamiących atrybut HTML). */
-function telHref(phone: string): string {
-  return phone.replace(/[^\d+]/g, '');
-}
 
 // Cache sesji: powrót do tej samej kategorii/prowincji nie pyta backendu wcale.
 // Missy też pamiętamy (backend i tak je cache'uje, ale oszczędzamy round-trip).
@@ -130,6 +122,11 @@ export function FacilitiesMap({
     })();
     return () => {
       alive = false;
+      // unmount: remove() zdejmuje listenery window/document i zwalnia instancję mapy
+      mapRef.current?.remove();
+      mapRef.current = null;
+      markersRef.current.clear();
+      markerWaitsRef.current.clear();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

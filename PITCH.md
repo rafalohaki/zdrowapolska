@@ -16,6 +16,7 @@ Pokaż: hero → wyszukaj kardiolog → **ranking z 0-dniową kolejką na 1. mie
 2. **Mapa** — pinezki kolorowane czasem oczekiwania
 3. **Doradca AI** — pytasz po polsku, on analizuje statystyki i dostępność (groq/compound)
 4. **Wszystko linkowalne** — wyślij wynik komuś z rodziny jednym kliknięciem
+5. **PWA** — instaluje się jak aplikacja (ikona na pulpicie, offline shell)
 
 Demo: filtr ♿ Rampa → mapa → AI „która placówka najlepsza dla osoby na wózku?"
 
@@ -24,7 +25,8 @@ Demo: filtr ♿ Rampa → mapa → AI „która placówka najlepsza dla osoby na
 - **SQLite + Redis + Meilisearch**: odpowiedzi z bazy w ~20 ms zamiast 46 s z NFZ; pełny tekst z synonimami („dentysta" znajduje stomatologię)
 - **Uczciwy scraper**: 1 żądanie/60 ms, harmonogram co 12 h — nie spamujemy publicznego API i świadomie nie rotujemy IP
 - **Odporność**: rate-limit per IP na ciężkich endpointach, snapshoty zamiast żywych zapytań, graceful degradation (Redis/Meili/AI opcjonalne)
-- 36 testów (31 jednostkowych + 5 E2E), TypeScript strict, CI na każdym pushu
+- **Trend kolejki** — historia dzienna snapshotów: „kolejka rośnie/maleje o N%" + alerty Discord przy istotnych zmianach
+- 51 testów (46 jednostkowych + 5 E2E), TypeScript strict, CI na każdym pushu
 
 ## 3:30–4:15 — Uczciwość = zaufanie
 - Widoczny disclaimer: statystyki miesięczne, potwierdź telefonicznie, to nie porada medyczna

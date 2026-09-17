@@ -82,6 +82,7 @@ export function AiPanel({ benefit, facilities }: { benefit: string; facilities: 
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
           rows={2}
+          maxLength={500}
           placeholder="Pytanie (opcjonalnie): np. „Która placówka ma najlepszy dojazd?”"
           className="w-full resize-none rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 text-sm outline-none placeholder:text-slate-400 dark:text-slate-100 focus:border-brand-400"
         />
@@ -105,7 +106,7 @@ export function AiPanel({ benefit, facilities }: { benefit: string; facilities: 
       {error && <p className="mt-3 text-sm text-rose-600">{error}</p>}
 
       {answer && !loading && (
-        <div className="mt-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
+        <div aria-live="polite" className="mt-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
           <RichText text={answer.text} />
           <p className="mt-3 border-t border-slate-100 dark:border-slate-800 pt-2 text-[11px] text-slate-400 dark:text-slate-500">
             Źródło analizy: {answer.provider} · dane: NFZ · to nie jest porada medyczna

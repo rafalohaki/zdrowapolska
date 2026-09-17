@@ -143,7 +143,10 @@ export default function App() {
   const search = (benefit: string, locality?: string) => {
     const next = { ...state, benefit, ...(locality !== undefined ? { locality } : {}) };
     setState(next);
-    sync(next);
+    // nowe zapytanie = wpis w historii przeglądarki (wstecz wraca do poprzednich
+    // wyników); powtórzony submit tego samego query nie śmieci historii
+    const changed = next.benefit !== state.benefit || next.locality !== state.locality;
+    syncUrl(next, modeRef.current, changed);
     setHistory(pushHistory(benefit, next.locality));
     void runSearch(benefit, next.kase, next.locality, next.province);
   };
@@ -208,17 +211,22 @@ export default function App() {
   );
 
   const copyLink = async () => {
-    // mobilne: natywny share sheet; desktop/brak wsparcia: schowek
+    // mobilne: natywny share sheet; desktop/brak wsparcia/błąd share: schowek
     try {
       if (navigator.share) {
         await navigator.share({ url: location.href, title: document.title });
         return;
       }
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') return; // user zamknął sheet — nie kopiuj
+      // inny błąd share (np. nieobsługiwane dane) → spadamy do schowka
+    }
+    try {
       await navigator.clipboard.writeText(location.href);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      /* abort share sheetu lub brak uprawnień — URL i tak jest w pasku adresu */
+      /* brak uprawnień do schowka — URL i tak jest w pasku adresu */
     }
   };
 
