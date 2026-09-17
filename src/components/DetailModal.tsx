@@ -28,6 +28,13 @@ export function DetailModal({ facility, onClose }: { facility: Facility; onClose
 
   const flags = A11Y_FILTERS.filter((f) => facility.flags[f.key]);
 
+  // „Wyznacz trasę": współrzędne z geokodowania → OSM directions;
+  // bez koordynatów → wyszukiwanie adresu na OSM
+  const routeUrl =
+    facility.lat !== null && facility.lon !== null
+      ? `https://www.openstreetmap.org/directions?to=${facility.lat}%2C${facility.lon}`
+      : `https://www.openstreetmap.org/search?query=${encodeURIComponent(`${facility.address}, ${facility.locality}`)}`;
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-0 backdrop-blur-sm sm:items-center sm:p-6"
@@ -129,24 +136,14 @@ export function DetailModal({ facility, onClose }: { facility: Facility; onClose
           <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Brak zadeklarowanych udogodnień w bazie NFZ.</p>
         )}
 
-        {(() => {
-          // „Wyznacz trasę": współrzędne z geokodowania → OSM directions;
-          // bez koordynatów → wyszukiwanie adresu na OSM
-          const q =
-            facility.lat !== null && facility.lon !== null
-              ? `https://www.openstreetmap.org/directions?to=${facility.lat}%2C${facility.lon}`
-              : `https://www.openstreetmap.org/search?query=${encodeURIComponent(`${facility.address}, ${facility.locality}`)}`;
-          return (
-            <a
-              href={q}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-6 inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-800 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 transition hover:border-brand-300 hover:text-brand-700"
-            >
-              <PinIcon className="h-4 w-4" /> Wyznacz trasę (OpenStreetMap)
-            </a>
-          );
-        })()}
+        <a
+          href={routeUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-6 inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-800 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 transition hover:border-brand-300 hover:text-brand-700"
+        >
+          <PinIcon className="h-4 w-4" /> Wyznacz trasę (OpenStreetMap)
+        </a>
 
         <div className="mt-6 rounded-xl bg-slate-50 dark:bg-slate-800/50 p-4 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
           Dane pochodzą z oficjalnego API NFZ „Terminy Leczenia” i są aktualizowane miesięcznie — przed

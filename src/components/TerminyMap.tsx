@@ -138,39 +138,39 @@ export function TerminyMap({
     let alive = true;
     void (async () => {
       try {
-      if (!containerRef.current) return;
-      const L = await loadLeaflet();
-      if (!alive || !containerRef.current) return;
-      if (!mapRef.current) {
-        mapRef.current = L.map(containerRef.current).setView([51.92, 19.15], 6);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '© OpenStreetMap',
-          maxZoom: 18,
-        }).addTo(mapRef.current);
-      }
-      const map = mapRef.current;
-    map.eachLayer((layer) => {
-      if (layer instanceof L.Marker) map.removeLayer(layer);
-    });
-    const dark = document.documentElement.classList.contains('dark');
-    const bounds: [number, number][] = [];
-    for (const f of plotted.slice(0, 200)) {
-      bounds.push([f.rlat as number, f.rlon as number]);
-      L.marker([f.rlat as number, f.rlon as number], {
-        icon: makePin(L, PIN_COLORS[waitLevel(f.days)], dark),
-      })
-        .addTo(map)
-        .bindPopup(
-          `<strong>${escapeHtml(f.provider)}</strong><br>${escapeHtml(f.locality)}${
-            f.address ? `, ${escapeHtml(f.address)}` : ''
-          }<br><strong>Czas oczekiwania: ${escapeHtml(formatDaysShort(f.days))}</strong><br>${
-            f.phone ? `<a href="tel:${telHref(f.phone)}">${escapeHtml(f.phone)}</a>` : ''
-          }`,
-        );
-    }
-      if (bounds.length > 0) {
-        if (mapKeyChanged(map, mapKey)) map.fitBounds(bounds, { padding: [40, 40], maxZoom: 12 });
-      }
+        if (!containerRef.current) return;
+        const L = await loadLeaflet();
+        if (!alive || !containerRef.current) return;
+        if (!mapRef.current) {
+          mapRef.current = L.map(containerRef.current).setView([51.92, 19.15], 6);
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap',
+            maxZoom: 18,
+          }).addTo(mapRef.current);
+        }
+        const map = mapRef.current;
+        map.eachLayer((layer) => {
+          if (layer instanceof L.Marker) map.removeLayer(layer);
+        });
+        const dark = document.documentElement.classList.contains('dark');
+        const bounds: [number, number][] = [];
+        for (const f of plotted.slice(0, 200)) {
+          bounds.push([f.rlat as number, f.rlon as number]);
+          L.marker([f.rlat as number, f.rlon as number], {
+            icon: makePin(L, PIN_COLORS[waitLevel(f.days)], dark),
+          })
+            .addTo(map)
+            .bindPopup(
+              `<strong>${escapeHtml(f.provider)}</strong><br>${escapeHtml(f.locality)}${
+                f.address ? `, ${escapeHtml(f.address)}` : ''
+              }<br><strong>Czas oczekiwania: ${escapeHtml(formatDaysShort(f.days))}</strong><br>${
+                f.phone ? `<a href="tel:${telHref(f.phone)}">${escapeHtml(f.phone)}</a>` : ''
+              }`,
+            );
+        }
+        if (bounds.length > 0 && mapKeyChanged(map, mapKey)) {
+          map.fitBounds(bounds, { padding: [40, 40], maxZoom: 12 });
+        }
       } catch (err) {
         console.error('[map] init/render failed:', err);
       }

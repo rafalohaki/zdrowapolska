@@ -101,19 +101,8 @@ export async function airForStation(stationId: number): Promise<{
   if (!station) {
     return { station: null, kategoria: null, wartosc: null, dataObliczen: null, dataZrodlowa: null, pollutants: [], advice: 'Nie znaleziono stacji.', distanceKm: null, community: null, airly: null };
   }
-  const idx = await Effect.runPromise(
-    giosJson<{ AqIndex?: Record<string, unknown> }>(`/aqindex/getIndex/${stationId}`),
-  ).catch(() => ({}) as AqIndexResponse);
-  const a = idx.AqIndex ?? {};
-  const pollutants: AirPollutant[] = [];
-  for (const [key, kategoria] of Object.entries(a)) {
-    if (!key.startsWith('Nazwa kategorii indeksu dla wskażnika ') || typeof kategoria !== 'string') continue;
-    const wskaznik = key.replace('Nazwa kategorii indeksu dla wskażnika ', '');
-    const wartosc = a[`Wartość indeksu dla wskaźnika ${wskaznik}`];
-    pollutants.push({ wskaznik, kategoria: typeof kategoria === 'string' ? kategoria : null, wartosc: typeof wartosc === 'number' ? wartosc : null });
-  }
-  const wartosc = typeof a['Wartość indeksu'] === 'number' ? (a['Wartość indeksu'] as number) : null;
-  const kategoria = typeof a['Nazwa kategorii indeksu'] === 'string' ? (a['Nazwa kategorii indeksu'] as string) : null;
+  const a = await fetchStationIndex(stationId);
+  const { kategoria, wartosc, dataObliczen, dataZrodlowa, pollutants } = parseAqIndex(a);
   const refPoint =
     station.lat !== null && station.lon !== null ? { lat: station.lat, lon: station.lon } : null;
   const { community, airly } = await sourcesNear(refPoint);
@@ -123,8 +112,8 @@ export async function airForStation(stationId: number): Promise<{
     station,
     kategoria,
     wartosc,
-    dataObliczen: typeof a['Data wykonania obliczeń indeksu'] === 'string' ? (a['Data wykonania obliczeń indeksu'] as string) : null,
-    dataZrodlowa: typeof a['Data danych źródłowych, z których policzono wartość indeksu dla wskaźnika st'] === 'string' ? (a['Data danych źródłowych, z których policzono wartość indeksu dla wskaźnika st'] as string) : null,
+    dataObliczen,
+    dataZrodlowa,
     pollutants,
     advice: adviceFor(effectiveKategoria),
     distanceKm: 0,
@@ -415,6 +404,46 @@ export function adviceFor(kategoria: string | null): string {
 
 type AqIndexResponse = { AqIndex?: Record<string, unknown> };
 
+/** Surowy obiekt indeksu dla stacji (pusty obiekt przy błędzie/braku indeksu). */
+async function fetchStationIndex(stationId: number): Promise<Record<string, unknown>> {
+  const idx = await Effect.runPromise(
+    giosJson<{ AqIndex?: Record<string, unknown> }>(`/aqindex/getIndex/${stationId}`),
+  ).catch(() => ({}) as AqIndexResponse);
+  return idx.AqIndex ?? {};
+}
+
+type ParsedIndex = {
+  kategoria: string | null;
+  wartosc: number | null;
+  dataObliczen: string | null;
+  dataZrodlowa: string | null;
+  pollutants: AirPollutant[];
+};
+
+/** Rozbiera płaski obiekt GIOŚ AqIndex na kategorię + listę wskaźników. */
+function parseAqIndex(a: Record<string, unknown>): ParsedIndex {
+  const pollutants: AirPollutant[] = [];
+  for (const [key, kategoria] of Object.entries(a)) {
+    if (!key.startsWith('Nazwa kategorii indeksu dla wskażnika ') || typeof kategoria !== 'string')
+      continue;
+    const wskaznik = key.replace('Nazwa kategorii indeksu dla wskażnika ', '');
+    const wartosc = a[`Wartość indeksu dla wskaźnika ${wskaznik}`];
+    pollutants.push({
+      wskaznik,
+      kategoria,
+      wartosc: typeof wartosc === 'number' ? wartosc : null,
+    });
+  }
+  const str = (k: string) => (typeof a[k] === 'string' ? (a[k] as string) : null);
+  return {
+    kategoria: str('Nazwa kategorii indeksu'),
+    wartosc: typeof a['Wartość indeksu'] === 'number' ? (a['Wartość indeksu'] as number) : null,
+    dataObliczen: str('Data wykonania obliczeń indeksu'),
+    dataZrodlowa: str('Data danych źródłowych, z których policzono wartość indeksu dla wskaźnika st'),
+    pollutants,
+  };
+}
+
 /** Stacje pasujące do miejscowości (do autouzupełniania) — z cache stacji. */
 export async function airStationsByLocality(localityRaw: string): Promise<
   { id: number; name: string; city: string }[]
@@ -489,14 +518,11 @@ export async function airForLocality(localityRaw: string): Promise<{
   // aż znajdziemy stację z policzoną kategorią indeksu
   let station: GiosStation | null = null;
   let distanceKm: number | null = null;
-  let a: AqIndexResponse['AqIndex'] = {};
+  let a: Record<string, unknown> = {};
   for (const cand of candidates) {
     station = cand.station;
     distanceKm = cand.distanceKm;
-    const idx = await Effect.runPromise(
-      giosJson<{ AqIndex?: Record<string, unknown> }>(`/aqindex/getIndex/${cand.station.id}`),
-    ).catch(() => ({}) as AqIndexResponse);
-    a = idx.AqIndex ?? {};
+    a = await fetchStationIndex(cand.station.id);
     if (a['Nazwa kategorii indeksu']) break;
   }
 
@@ -524,20 +550,7 @@ export async function airForLocality(localityRaw: string): Promise<{
     };
   }
 
-  const pollutants: AirPollutant[] = [];
-  for (const [key, kategoria] of Object.entries(a)) {
-    if (!key.startsWith('Nazwa kategorii indeksu dla wskażnika ') || typeof kategoria !== 'string') continue;
-    const wskaznik = key.replace('Nazwa kategorii indeksu dla wskażnika ', '');
-    const wartosc = a[`Wartość indeksu dla wskaźnika ${wskaznik}`];
-    pollutants.push({
-      wskaznik,
-      kategoria: typeof kategoria === 'string' ? kategoria : null,
-      wartosc: typeof wartosc === 'number' ? wartosc : null,
-    });
-  }
-
-  const wartosc = typeof a['Wartość indeksu'] === 'number' ? (a['Wartość indeksu'] as number) : null;
-  const kategoria = typeof a['Nazwa kategorii indeksu'] === 'string' ? (a['Nazwa kategorii indeksu'] as string) : null;
+  const { kategoria, wartosc, dataObliczen, dataZrodlowa, pollutants } = parseAqIndex(a);
 
   // pozostałe dopasowane stacje (bez wybranej) — jedna lista dla matches i alternatives
   const others = matches
@@ -555,14 +568,8 @@ export async function airForLocality(localityRaw: string): Promise<{
     station,
     kategoria,
     wartosc,
-    dataObliczen:
-      typeof a['Data wykonania obliczeń indeksu'] === 'string'
-        ? (a['Data wykonania obliczeń indeksu'] as string)
-        : null,
-    dataZrodlowa:
-      typeof a['Data danych źródłowych, z których policzono wartość indeksu dla wskaźnika st'] === 'string'
-        ? (a['Data danych źródłowych, z których policzono wartość indeksu dla wskaźnika st'] as string)
-        : null,
+    dataObliczen,
+    dataZrodlowa,
     pollutants,
     advice: adviceFor(effectiveKategoria),
     alternatives: others,

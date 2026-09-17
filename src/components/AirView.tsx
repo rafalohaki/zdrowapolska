@@ -47,6 +47,36 @@ function katDot(kat: string | null): string {
   return KAT_BG[kat ?? ''] ?? 'bg-slate-400';
 }
 
+/** Wiersze z pomiarami okolicznymi — używane w karcie stacji i w karcie „brak stacji". */
+function SourceRows({ community, airly }: { community: CommunityAir | null; airly: AirlyAir | null }) {
+  return (
+    <>
+      {community && (
+        <li className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${katDot(community.kategoria)}`} />
+          <span className="font-medium">Czujniki obywatelskie (Sensor.Community)</span>
+          <span className="text-slate-500 dark:text-slate-400">
+            — PM2.5: <strong>{community.pm25 ?? 'bd'}</strong> µg/m³, PM10:{' '}
+            <strong>{community.pm10 ?? 'bd'}</strong> µg/m³ · {community.count} czujników w 12 km
+            {community.nearestKm > 0 && ` (najbliższy ~${community.nearestKm} km)`}
+          </span>
+        </li>
+      )}
+      {airly && (
+        <li className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${katDot(airly.kategoria)}`} />
+          <span className="font-medium">Airly (m.in. czujniki na paczkomatach)</span>
+          <span className="text-slate-500 dark:text-slate-400">
+            — PM2.5: <strong>{airly.pm25 ?? 'bd'}</strong> µg/m³, PM10:{' '}
+            <strong>{airly.pm10 ?? 'bd'}</strong> µg/m³
+            {airly.caqi !== null && ` · CAQI ${Math.round(airly.caqi)}`}
+          </span>
+        </li>
+      )}
+    </>
+  );
+}
+
 type Suggestion = { id: number; name: string; city: string };
 
 async function fetchAirStations(q: string, signal: AbortSignal): Promise<Suggestion[]> {
@@ -310,28 +340,7 @@ export function AirView() {
                 Inne pomiary w okolicy
               </p>
               <ul className="mt-2 space-y-2 text-sm text-slate-600 dark:text-slate-300">
-                {data.community && (
-                  <li className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${katDot(data.community.kategoria)}`} />
-                    <span className="font-medium">Czujniki obywatelskie (Sensor.Community)</span>
-                    <span className="text-slate-500 dark:text-slate-400">
-                      — PM2.5: <strong>{data.community.pm25 ?? 'bd'}</strong> µg/m³, PM10:{' '}
-                      <strong>{data.community.pm10 ?? 'bd'}</strong> µg/m³ · {data.community.count}{' '}
-                      czujników w 12 km{data.community.nearestKm > 0 && ` (najbliższy ~${data.community.nearestKm} km)`}
-                    </span>
-                  </li>
-                )}
-                {data.airly && (
-                  <li className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${katDot(data.airly.kategoria)}`} />
-                    <span className="font-medium">Airly (m.in. czujniki na paczkomatach)</span>
-                    <span className="text-slate-500 dark:text-slate-400">
-                      — PM2.5: <strong>{data.airly.pm25 ?? 'bd'}</strong> µg/m³, PM10:{' '}
-                      <strong>{data.airly.pm10 ?? 'bd'}</strong> µg/m³
-                      {data.airly.caqi !== null && ` · CAQI ${Math.round(data.airly.caqi)}`}
-                    </span>
-                  </li>
-                )}
+                <SourceRows community={data.community} airly={data.airly} />
               </ul>
             </div>
           )}
@@ -347,26 +356,7 @@ export function AirView() {
             <strong>Trening:</strong> {data.advice}
           </div>
           <ul className="mt-3 space-y-2 text-sm text-slate-600 dark:text-slate-300">
-            {data.community && (
-              <li className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${katDot(data.community.kategoria)}`} />
-                <span className="font-medium">Czujniki obywatelskie (Sensor.Community)</span>
-                <span className="text-slate-500 dark:text-slate-400">
-                  — PM2.5: <strong>{data.community.pm25 ?? 'bd'}</strong> µg/m³, PM10:{' '}
-                  <strong>{data.community.pm10 ?? 'bd'}</strong> µg/m³ · {data.community.count} czujników
-                </span>
-              </li>
-            )}
-            {data.airly && (
-              <li className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${katDot(data.airly.kategoria)}`} />
-                <span className="font-medium">Airly</span>
-                <span className="text-slate-500 dark:text-slate-400">
-                  — PM2.5: <strong>{data.airly.pm25 ?? 'bd'}</strong> µg/m³, PM10:{' '}
-                  <strong>{data.airly.pm10 ?? 'bd'}</strong> µg/m³
-                </span>
-              </li>
-            )}
+            <SourceRows community={data.community} airly={data.airly} />
           </ul>
           <p className="mt-3 text-xs text-slate-400 dark:text-slate-500">
             Pomiary obywatelskie mogą odbiegać od stacji referencyjnych — traktuj je orientacyjnie.
