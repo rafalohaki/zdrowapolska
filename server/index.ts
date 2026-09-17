@@ -373,12 +373,13 @@ app.get('/api/air', async (c) => {
     return c.json({ error: 'Podaj miejscowość (min. 3 znaki)' }, 400);
   }
   // trafienia cache'ujemy 30 min; nietrafione zapytania nie mogą zatruwać cache'a
-  // (ani dowolny wpisany string nie może na pół godziny zamrażać odpowiedzi)
+  // (ani dowolny wpisany string nie może na pół godziny zamrażać odpowiedzi).
+  // Wartościowa odpowiedź = stacja GIOŚ LUB jakiekolwiek czujniki w okolicy.
   const data = await cached(
     `air:locality:${locality.toLowerCase()}`,
     30 * 60 * 1000,
     () => airForLocality(locality),
-    (r) => r.station !== null,
+    (r) => r.station !== null || r.community !== null || r.airly !== null,
   );
   return c.json(data);
 });

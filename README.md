@@ -70,7 +70,7 @@ Dlaczego proxy: API NFZ **nie wysyła nagłówków CORS** i **rate-limituje po I
 | `GET /api/compare?benefit=&case=` | porównanie 16 województw (najpierw SQLite, potem NFZ; zapisuje snapshoty) |
 | `GET /api/queues-province?benefit=&province=` | kolejki jednego województwa (progresywne ładowanie na froncie) |
 | `GET /api/facilities?locality=&benefit=` | placówki z NFZ GSL „Gdzie się leczyć" (telefony, adresy, nocna pomoc) |
-| `GET /api/air?locality=` · `GET /api/air-stations?locality=` | jakość powietrza GIOŚ + lista stacji pomiarowych |
+| `GET /api/air?locality=` · `GET /api/air-stations?locality=` | jakość powietrza: stacja GIOŚ (po nazwie lub najbliższa wg współrzędnych) + czujniki obywatelskie Sensor.Community + Airly (opcjonalnie, `AIRLY_API_KEY`) |
 | `POST /api/geocode` | geokodowanie adresów przez Nominatim (cache + fair-use 1 req/s) |
 | `GET /api/insights` | raport ogólnopolski — agregaty z bazy snapshotów |
 | `POST /api/ai` | doradca AI (`groq/compound`; fallback heurystyczny bez kluczy) |

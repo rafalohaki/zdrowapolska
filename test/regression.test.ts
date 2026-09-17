@@ -14,7 +14,7 @@ const db = await import('../server/db');
 const { cached, purgeKeys } = await import('../server/cache');
 const { searchBenefits } = await import('../server/search');
 const { geocodeBatch } = await import('../server/geocode');
-const { normCity } = await import('../server/air');
+const { normCity, pmCategory, worstCategory, distKm, nearestStation } = await import('../server/air');
 const { gslCity } = await import('../src/lib/matchQueues');
 const { facilitiesCsv } = await import('../src/lib/csv');
 const { paramsToState } = await import('../src/lib/search');
@@ -163,6 +163,36 @@ describe('normCity — pusty wynik po normalizacji', () => {
   test('„!!!" normalizuje się do pustego stringa (nie dopasowuje wszystkich stacji)', () => {
     expect(normCity('!!!')).toBe('');
     expect(normCity('Łódź')).toBe('lodz');
+  });
+});
+
+describe('jakość powietrza — progi PM i najbliższa stacja', () => {
+  test('pmCategory: oficjalne progi polskiego indeksu (µg/m³)', () => {
+    expect(pmCategory('PM25', 10)).toBe('Bardzo dobry');
+    expect(pmCategory('PM25', 30)).toBe('Dobry');
+    expect(pmCategory('PM25', 60)).toBe('Dostateczny');
+    expect(pmCategory('PM25', 200)).toBe('Bardzo zły');
+    expect(pmCategory('PM10', 45)).toBe('Dobry');
+    expect(pmCategory('PM10', 160)).toBe('Bardzo zły');
+  });
+
+  test('worstCategory wybiera najgorszą kategorię', () => {
+    expect(worstCategory(['Dobry', 'Zły', null])).toBe('Zły');
+    expect(worstCategory([null, null])).toBeNull();
+    expect(worstCategory(['Bardzo dobry'])).toBe('Bardzo dobry');
+  });
+
+  test('distKm + nearestStation: wybór po współrzędnych, nie po nazwie', () => {
+    // Kraków (50.06,19.94) → Rzeszów ~148 km
+    expect(distKm(50.06, 19.94, 50.04, 22.0)).toBeGreaterThan(140);
+    expect(distKm(50.06, 19.94, 50.07, 19.95)).toBeLessThan(2);
+    const stations = [
+      { id: 1, code: '', name: 'Daleka', city: 'X', street: null, lat: 52.0, lon: 21.0 },
+      { id: 2, code: '', name: 'Bliska', city: 'Y', street: null, lat: 50.05, lon: 19.95 },
+      { id: 3, code: '', name: 'Bez koordów', city: 'Z', street: null, lat: null, lon: null },
+    ];
+    const near = nearestStation(stations, 50.06, 19.94);
+    expect(near?.station.id).toBe(2); // pomija stacje bez współrzędnych
   });
 });
 

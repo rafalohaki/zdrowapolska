@@ -7,6 +7,21 @@ const API_BASE =
 
 type AirPollutant = { wskaznik: string; kategoria: string | null; wartosc: number | null };
 type AirStation = { id: number; name: string; city: string; street: string | null };
+type CommunityAir = {
+  count: number;
+  pm25: number | null;
+  pm10: number | null;
+  nearestKm: number;
+  kategoria: string | null;
+  measuredAt: string | null;
+};
+type AirlyAir = {
+  pm25: number | null;
+  pm10: number | null;
+  caqi: number | null;
+  kategoria: string | null;
+  level: string | null;
+};
 type AirData = {
   station: AirStation | null;
   kategoria: string | null;
@@ -14,6 +29,9 @@ type AirData = {
   dataObliczen: string | null;
   pollutants: AirPollutant[];
   advice: string;
+  distanceKm: number | null;
+  community: CommunityAir | null;
+  airly: AirlyAir | null;
 };
 
 const KAT_BG: Record<string, string> = {
@@ -260,6 +278,12 @@ export function AirView() {
             <strong>Trening:</strong> {data.advice}
           </div>
 
+          {data.distanceKm !== null && data.distanceKm > 1 && (
+            <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
+              W tej miejscowości nie ma stacji GIOŚ — pokazuję najbliższą (~{data.distanceKm} km).
+            </p>
+          )}
+
           {data.pollutants.length > 0 && (
             <div className="mt-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
@@ -279,6 +303,74 @@ export function AirView() {
               </div>
             </div>
           )}
+
+          {(data.community || data.airly) && (
+            <div className="mt-4 border-t border-slate-100 pt-4 dark:border-slate-800">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                Inne pomiary w okolicy
+              </p>
+              <ul className="mt-2 space-y-2 text-sm text-slate-600 dark:text-slate-300">
+                {data.community && (
+                  <li className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${katDot(data.community.kategoria)}`} />
+                    <span className="font-medium">Czujniki obywatelskie (Sensor.Community)</span>
+                    <span className="text-slate-500 dark:text-slate-400">
+                      — PM2.5: <strong>{data.community.pm25 ?? 'bd'}</strong> µg/m³, PM10:{' '}
+                      <strong>{data.community.pm10 ?? 'bd'}</strong> µg/m³ · {data.community.count}{' '}
+                      czujników w 12 km{data.community.nearestKm > 0 && ` (najbliższy ~${data.community.nearestKm} km)`}
+                    </span>
+                  </li>
+                )}
+                {data.airly && (
+                  <li className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${katDot(data.airly.kategoria)}`} />
+                    <span className="font-medium">Airly (m.in. czujniki na paczkomatach)</span>
+                    <span className="text-slate-500 dark:text-slate-400">
+                      — PM2.5: <strong>{data.airly.pm25 ?? 'bd'}</strong> µg/m³, PM10:{' '}
+                      <strong>{data.airly.pm10 ?? 'bd'}</strong> µg/m³
+                      {data.airly.caqi !== null && ` · CAQI ${Math.round(data.airly.caqi)}`}
+                    </span>
+                  </li>
+                )}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
+      {!loading && !error && data && !data.station && (data.community || data.airly) && (
+        <div className="animate-fade-up mt-6 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-card">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+            Brak stacji urzędowej — ale są pomiary w okolicy
+          </h2>
+          <div className="mt-3 rounded-xl border border-brand-200 dark:border-brand-800 bg-brand-50 p-4 text-sm leading-relaxed text-brand-900 dark:bg-brand-900/30 dark:text-brand-100">
+            <strong>Trening:</strong> {data.advice}
+          </div>
+          <ul className="mt-3 space-y-2 text-sm text-slate-600 dark:text-slate-300">
+            {data.community && (
+              <li className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${katDot(data.community.kategoria)}`} />
+                <span className="font-medium">Czujniki obywatelskie (Sensor.Community)</span>
+                <span className="text-slate-500 dark:text-slate-400">
+                  — PM2.5: <strong>{data.community.pm25 ?? 'bd'}</strong> µg/m³, PM10:{' '}
+                  <strong>{data.community.pm10 ?? 'bd'}</strong> µg/m³ · {data.community.count} czujników
+                </span>
+              </li>
+            )}
+            {data.airly && (
+              <li className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${katDot(data.airly.kategoria)}`} />
+                <span className="font-medium">Airly</span>
+                <span className="text-slate-500 dark:text-slate-400">
+                  — PM2.5: <strong>{data.airly.pm25 ?? 'bd'}</strong> µg/m³, PM10:{' '}
+                  <strong>{data.airly.pm10 ?? 'bd'}</strong> µg/m³
+                </span>
+              </li>
+            )}
+          </ul>
+          <p className="mt-3 text-xs text-slate-400 dark:text-slate-500">
+            Pomiary obywatelskie mogą odbiegać od stacji referencyjnych — traktuj je orientacyjnie.
+          </p>
         </div>
       )}
     </section>
