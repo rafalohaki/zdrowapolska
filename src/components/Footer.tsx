@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Logo, MoonIcon, SunIcon } from './Icons';
 import { getInstallPrompt, isStandalone, onInstallPrompt } from '../lib/pwa';
 
@@ -49,6 +49,97 @@ function InstallButton() {
   );
 }
 
+const MODES: { key: AppMode; label: string }[] = [
+  { key: 'terminy', label: 'Terminy leczenia' },
+  { key: 'raport', label: 'Raport PL' },
+  { key: 'wsparcie', label: 'Wsparcie psychiczne' },
+  { key: 'powietrze', label: 'Jakość powietrza' },
+  { key: 'placowki', label: 'Placówki NFZ' },
+];
+
+/** Menu mobilne — bez niego na telefonie były tylko 2 z 5 trybów. */
+function MobileMenu({
+  mode,
+  onMode,
+}: {
+  mode: AppMode;
+  onMode: (m: AppMode) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', esc);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      document.removeEventListener('keydown', esc);
+    };
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative md:hidden">
+      <button
+        type="button"
+        aria-label="Menu nawigacji"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        onClick={() => setOpen((o) => !o)}
+        className="rounded-lg border border-slate-200 p-2 text-slate-600 transition hover:border-brand-300 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5" aria-hidden="true">
+          {open ? (
+            <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
+          ) : (
+            <path strokeLinecap="round" d="M4 7h16M4 12h16M4 17h16" />
+          )}
+        </svg>
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 z-50 mt-2 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lift dark:border-slate-700 dark:bg-slate-900"
+        >
+          {MODES.map((m) => (
+            <button
+              key={m.key}
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                onMode(m.key);
+              }}
+              className={`block w-full px-4 py-2.5 text-left text-sm transition ${
+                mode === m.key
+                  ? 'bg-brand-50 font-semibold text-brand-800 dark:bg-brand-900/40 dark:text-brand-200'
+                  : 'text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800'
+              }`}
+            >
+              {m.label}
+            </button>
+          ))}
+          <a
+            href="https://dane.gov.pl"
+            target="_blank"
+            rel="noreferrer"
+            role="menuitem"
+            className="block px-4 py-2.5 text-left text-sm text-slate-700 transition hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+          >
+            Dane otwarte ↗
+          </a>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Header({
   mode,
   onMode,
@@ -71,7 +162,7 @@ export function Header({
           <button
             type="button"
             id="nav-terminy" onClick={() => onMode('terminy')}
-            className={`hidden transition sm:block ${
+            className={`hidden transition md:block ${
               mode === 'terminy' ? 'text-brand-700 dark:text-brand-400' : 'hover:text-brand-700 dark:hover:text-brand-400'
             }`}
           >
@@ -89,7 +180,7 @@ export function Header({
           <button
             type="button"
             id="nav-wsparcie" onClick={() => onMode('wsparcie')}
-            className={`transition ${
+            className={`hidden transition md:block ${
               mode === 'wsparcie' ? 'text-brand-700 dark:text-brand-400' : 'hover:text-brand-700 dark:hover:text-brand-400'
             }`}
           >
@@ -107,7 +198,7 @@ export function Header({
           <button
             type="button"
             id="nav-placowki" onClick={() => onMode('placowki')}
-            className={`transition ${
+            className={`hidden transition md:block ${
               mode === 'placowki' ? 'text-brand-700 dark:text-brand-400' : 'hover:text-brand-700 dark:hover:text-brand-400'
             }`}
           >
@@ -117,12 +208,13 @@ export function Header({
             href="https://dane.gov.pl"
             target="_blank"
             rel="noreferrer"
-            className="hidden transition hover:text-brand-700 dark:hover:text-brand-400 sm:block"
+            className="hidden transition hover:text-brand-700 dark:hover:text-brand-400 md:block"
           >
             Dane otwarte
           </a>
           <InstallButton />
           <ThemeToggle />
+          <MobileMenu mode={mode} onMode={onMode} />
         </nav>
       </div>
     </header>

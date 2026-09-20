@@ -82,6 +82,7 @@ export function FacilitiesMap({
   const resetKeyRef = useRef(resetKey);
   const [pins, setPins] = useState<Pin[]>([]);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [geoFailed, setGeoFailed] = useState(0); // partie, którym batch nie odpowiedział (sieć)
   const [mapReady, setMapReady] = useState(false);
 
   // Grupuj placówki po adresie: 1 pinezka = 1 budynek (NFZ ma wiele wpisów na ten sam adres).
@@ -157,6 +158,7 @@ export function FacilitiesMap({
     const ctrl = new AbortController();
     const groups = addressGroups;
     const pending = groups.filter(([a]) => !geoCache.has(a) && !geoMiss.has(a));
+    setGeoFailed(0);
     const cachedPins: Pin[] = [];
     for (const [address, group] of groups) {
       const hit = geoCache.get(address);
@@ -179,6 +181,9 @@ export function FacilitiesMap({
         } catch {
           if (ctrl.signal.aborted || epochRef.current !== epoch) return;
           res = [];
+          // nie wrzucaj do geoMiss — to błąd sieci, nie „adres nieznany";
+          // licznik trafia do podpisu zamiast znikać z paska postępu
+          setGeoFailed((n) => n + batch.length);
         }
         if (epochRef.current !== epoch || ctrl.signal.aborted) return;
         res.forEach((point, j) => {
@@ -288,8 +293,11 @@ export function FacilitiesMap({
           : pins.length > 0
             ? `Mapa: ${pins.length} pinezek z ${progress.total} adresów — współrzędne cache'owane.`
             : progress.total > 0
-              ? 'Nie udało się ustalić współrzędnych dla tych adresów.'
+              ? `Nie udało się ustalić współrzędnych dla tych adresów.${geoFailed > 0 ? ` (błąd sieci: ${geoFailed})` : ''}`
               : 'Mapa: OpenStreetMap (Nominatim).'}
+        {!active && pins.length > 0 && geoFailed > 0 && (
+          <span className="text-amber-600 dark:text-amber-400"> · {geoFailed} adresów pominięto po błędzie sieci</span>
+        )}
         {waits !== undefined && waits.size > 0 && !active && (
           <>
             {' '}Kolory pinezek to czas kolejki:{' '}

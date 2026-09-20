@@ -14,6 +14,7 @@ export function TrendChip({
   const [trend, setTrend] = useState<TrendResponse | null>(null);
 
   useEffect(() => {
+    setTrend(null); // bez tego pod nową frazą wisiałby sparkline z poprzedniego świadczenia
     const ctrl = new AbortController();
     fetchTrend(benefit, kase, locality, ctrl.signal)
       .then(setTrend)

@@ -54,6 +54,12 @@ export function SearchPanel({
   const [locHighlight, setLocHighlight] = useState(-1);
   const locBoxRef = useRef<HTMLDivElement>(null);
 
+  // benefit/locality zmieniają się też z zewnątrz (historia, podpowiedzi,
+  // popstate, „sprawdź kolejki") — pola muszą odzwierciedlać stan, nie
+  // pokazywać poprzedniego zapytania przy nowych wynikach
+  useEffect(() => setQuery(benefit), [benefit]);
+  useEffect(() => setLocQuery(locality), [locality]);
+
   // debounced słownik NFZ
   useEffect(() => {
     const q = query.trim();
@@ -159,6 +165,8 @@ export function SearchPanel({
               aria-label="Szukaj świadczenia NFZ"
               aria-expanded={open}
               role="combobox"
+              aria-autocomplete="list"
+              aria-activedescendant={highlight >= 0 ? `benefit-opt-${highlight}` : undefined}
               id="benefit-input" aria-controls="benefit-listbox"
               className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-3 pr-4 pl-11 text-base shadow-card outline-none transition placeholder:text-slate-400 dark:text-slate-100 focus:border-brand-400"
             />
@@ -177,7 +185,17 @@ export function SearchPanel({
                 setLocHighlight(-1);
               }}
               onFocus={() => setLocOpen(true)}
+              role="combobox"
+              aria-autocomplete="list"
+              aria-expanded={locOpen && locItems.length > 0}
+              aria-controls="locality-listbox"
+              aria-activedescendant={locHighlight >= 0 ? `locality-opt-${locHighlight}` : undefined}
               onKeyDown={(e) => {
+                if (e.key === 'Enter' && (!locOpen || locHighlight < 0)) {
+                  // Enter bez wyboru podpowiedzi = „Szukaj"
+                  submit();
+                  return;
+                }
                 if (!locOpen || !locItems.length) return;
                 if (e.key === 'ArrowDown') {
                   e.preventDefault();
@@ -199,11 +217,18 @@ export function SearchPanel({
               className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-3 pr-3 pl-10 text-sm shadow-card outline-none transition placeholder:text-slate-400 dark:text-slate-100 focus:border-brand-400"
             />
             {locOpen && locQuery.trim().length >= 3 && locItems.length > 0 && (
-              <ul className="absolute z-30 mt-2 max-h-64 w-full min-w-56 overflow-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-1 shadow-lift">
+              <ul
+                id="locality-listbox"
+                role="listbox"
+                className="absolute z-30 mt-2 max-h-64 w-full min-w-56 overflow-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-1 shadow-lift"
+              >
                 {locItems.map((name, i) => (
                   <li key={name}>
                     <button
                       type="button"
+                      id={`locality-opt-${i}`}
+                      role="option"
+                      aria-selected={i === locHighlight}
                       onMouseEnter={() => setLocHighlight(i)}
                       onClick={() => {
                         onChange({ locality: name });
@@ -211,7 +236,9 @@ export function SearchPanel({
                         setLocOpen(false);
                       }}
                       className={`block w-full px-4 py-2 text-left text-sm ${
-                        i === locHighlight ? 'bg-brand-50 text-brand-800' : 'text-slate-700 dark:text-slate-200'
+                        i === locHighlight
+                          ? 'bg-brand-50 text-brand-800 dark:bg-brand-900/40 dark:text-brand-200'
+                          : 'text-slate-700 dark:text-slate-200'
                       }`}
                     >
                       {name}
@@ -263,13 +290,15 @@ export function SearchPanel({
             className="absolute z-30 mt-2 max-h-72 w-full overflow-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-1 shadow-lift"
           >
             {items.map((name, i) => (
-              <li key={name} role="option" aria-selected={i === highlight}>
+              <li key={name} id={`benefit-opt-${i}`} role="option" aria-selected={i === highlight}>
                 <button
                   type="button"
                   onMouseEnter={() => setHighlight(i)}
                   onClick={() => pick(name)}
                   className={`block w-full px-4 py-2 text-left text-sm ${
-                    i === highlight ? 'bg-brand-50 text-brand-800' : 'text-slate-700 dark:text-slate-200'
+                    i === highlight
+                      ? 'bg-brand-50 text-brand-800 dark:bg-brand-900/40 dark:text-brand-200'
+                      : 'text-slate-700 dark:text-slate-200'
                   }`}
                 >
                   {name}

@@ -255,8 +255,13 @@ app.get('/api/compare', limit(12), async (c) => {
       return c.json(await cached(dbKey, TTL.dbCompare, async () => assembleFromDb(benefit, kase, snaps)));
     }
     return c.json(
-      await cached(dbKey, TTL.dbCompare, async () =>
-        assemblePartialFromDb(benefit, kase, pages, locality, snaps),
+      await cached(
+        dbKey,
+        TTL.dbCompare,
+        async () => assemblePartialFromDb(benefit, kase, pages, locality, snaps),
+        // odpowiedzi z brakami (errors) nie zamrażamy na 10 min — dociągnięte
+        // w międzyczasie snapshoty muszą trafić do kolejnego zapytania
+        (d) => d.errors.length === 0,
       ),
     );
   }
@@ -316,7 +321,9 @@ app.get('/api/facilities', limit(30), async (c) => {
   // 68 = wewnętrzny limit GSL; niższy clamp psuł „Pokaż więcej" — żądanie str. 21
   // ścinało do 20 i frontend doklejał tę samą stronę drugi raz (duplikaty)
   const page = intParam(c.req.query('page'), 1, 1, 68);
-  if (!(category in GSL_CATEGORIES)) {
+  // Object.hasOwn, nie `in` — klucze prototypu ('toString', 'constructor')
+  // przechodziły walidację i wywalały GSL_CATEGORIES[category].route na 502
+  if (!Object.hasOwn(GSL_CATEGORIES, category)) {
     return c.json({ error: `category: ${Object.keys(GSL_CATEGORIES).join(' | ')}` }, 400);
   }
   if (!PROVINCES.some((p) => p.code === province)) {
@@ -458,6 +465,7 @@ app.post('/api/ai', limit(10), async (c) => {
       .filter((r) => r !== null && typeof r === 'object')
       .slice(0, 20)
       .map(cleanRecord),
+    kase: body.kase === 2 ? 2 : 1,
   };
   return c.json(await advise(req));
 });

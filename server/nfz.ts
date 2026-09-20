@@ -173,11 +173,17 @@ export function slimRecord(rec: NfzRecord): NfzRecord {
   for (const k of SLIM_KEYS) if (a[k] !== undefined) attrs[k] = a[k];
   const st = (a['statistics'] ?? {}) as Record<string, unknown>;
   const pd = (st['provider-data'] ?? {}) as Record<string, unknown>;
+  // computed-data też przechodzi — klient ma fallback na avg z danych wyliczonych,
+  // gdy provider-data.average-period jest pusty
+  const cd = (st['computed-data'] ?? {}) as Record<string, unknown>;
   attrs['statistics'] = {
     'provider-data': {
       awaiting: pd['awaiting'] ?? null,
       'average-period': pd['average-period'] ?? null,
       update: pd['update'] ?? null,
+    },
+    'computed-data': {
+      'average-period': cd['average-period'] ?? null,
     },
   };
   attrs['dates'] = a['dates'] ?? {};

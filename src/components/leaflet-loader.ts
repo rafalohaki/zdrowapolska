@@ -15,6 +15,10 @@ export function loadLeaflet(): Promise<typeof LType> {
         return L;
       },
     );
+    // po nieudanym imporcie (np. brak sieci) promise zostawałby rejected na zawsze
+    leafletPromise.catch(() => {
+      leafletPromise = null;
+    });
   }
   return leafletPromise;
 }

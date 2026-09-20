@@ -50,6 +50,9 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  // kody województw, które padły podczas pobierania — po loadingu pokazujemy
+  // notkę z „dociągnij", żeby ranking nie udawał pełnych danych
+  const [failedCodes, setFailedCodes] = useState<string[]>([]);
   const [selected, setSelected] = useState<Facility | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>(() => loadHistory());
   const startedFor = useRef<string>('');
@@ -68,6 +71,7 @@ export default function App() {
 
       const targets = province === 'all' ? FETCH_ORDER : [province];
       setTargetsTotal(targets.length);
+      setFailedCodes([]);
       const queue = [...targets];
       let failed = 0;
       let historyPushed = false;
@@ -83,11 +87,13 @@ export default function App() {
               historyPushed = true;
               setHistory(pushHistory(benefit, locality));
             }
+            setFailedCodes((prev) => prev.filter((c) => c !== code));
             setProvinces((prev) => sortProvinces([...prev.filter((p) => p.code !== code), data]));
           } catch (err) {
             if (startedFor.current !== key) return;
             failed += 1;
             // województwo z błędem pomijamy, ale pokazujemy stan (0 rekordów)
+            setFailedCodes((prev) => (prev.includes(code) ? prev : [...prev, code]));
             setProvinces((prev) => [
               ...prev.filter((p) => p.code !== code),
               { code, name: provinceName(code), total: 0, records: [] },
@@ -132,11 +138,19 @@ export default function App() {
     if (
       patch.province !== undefined &&
       patch.province !== state.province &&
-      next.benefit &&
-      patch.province !== 'all' &&
-      !provincesRef.current.some((p) => p.code === patch.province && p.records.length > 0)
+      next.benefit
     ) {
-      void runSearch(next.benefit, next.kase, next.locality, patch.province);
+      if (patch.province === 'all') {
+        // deep-link ze scoped ?p=06 → powrót do „Cała Polska" musi dociągnąć resztę
+        const loaded = new Set(
+          provincesRef.current.filter((p) => p.records.length > 0).map((p) => p.code),
+        );
+        if (FETCH_ORDER.some((c) => !loaded.has(c))) {
+          void runSearch(next.benefit, next.kase, next.locality, 'all');
+        }
+      } else if (!provincesRef.current.some((p) => p.code === patch.province && p.records.length > 0)) {
+        void runSearch(next.benefit, next.kase, next.locality, patch.province);
+      }
     }
   };
 
@@ -156,11 +170,9 @@ export default function App() {
     modeRef.current = m;
     setMode(m);
     if (m === 'terminy') {
-      // powrót do terminów: parametry wyszukiwania zostają (stan w state)
-      const p = new URLSearchParams(location.search);
-      p.delete('mode');
-      const qs = p.toString();
-      window.history.pushState(null, '', `${location.pathname}${qs ? `?${qs}` : ''}`);
+      // powrót do terminów: stan w state — odtwórz parametry w URL,
+      // bo wejście z ?mode=X już je wyczyściło (copyLink/refresh gubiły wyniki)
+      syncUrl(state, 'terminy', true);
     } else {
       // inne tryby: parametry b/v/p/a/s są bez sensu — czysty ?mode=X
       window.history.pushState(null, '', `${location.pathname}?mode=${m}`);
@@ -176,7 +188,17 @@ export default function App() {
       setMode(m);
       const next = paramsToState(location.search);
       setState(next);
-      if (next.benefit) void runSearch(next.benefit, next.kase, next.locality, next.province);
+      if (next.benefit.length >= 3) {
+        void runSearch(next.benefit, next.kase, next.locality, next.province);
+      } else {
+        // wstecz do hero / b=<3 znaki — wyczyść wyniki, żeby nie wisiały pod nową frazą
+        startedFor.current = '';
+        setProvinces([]);
+        setTargetsDone(0);
+        setTargetsTotal(0);
+        setError(null);
+        setFailedCodes([]);
+      }
       window.scrollTo({ top: 0 });
     };
     window.addEventListener('popstate', onPop);
@@ -202,7 +224,10 @@ export default function App() {
                 attributes: { ...attrs, latitude: point.lat, longitude: point.lon },
               };
             }
-            return { ...rec, attributes: { ...attrs, latitude: null, longitude: null } };
+            return {
+              ...rec,
+              attributes: { ...attrs, latitude: null, longitude: null, geo: 'miss' },
+            };
           }),
         })),
       );
@@ -224,9 +249,29 @@ export default function App() {
     try {
       await navigator.clipboard.writeText(location.href);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      if (copiedTimer.current) clearTimeout(copiedTimer.current);
+      copiedTimer.current = setTimeout(() => setCopied(false), 2000);
     } catch {
       /* brak uprawnień do schowka — URL i tak jest w pasku adresu */
+    }
+  };
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (copiedTimer.current) clearTimeout(copiedTimer.current);
+  }, []);
+
+  // dociąga województwa, które padły podczas pierwszego pobierania (429/sieć),
+  // bez kasowania tego, co już jest na ekranie
+  const retryMissing = () => {
+    const key = startedFor.current;
+    for (const code of failedCodes) {
+      void fetchProvinceQueues(state.benefit, code, state.kase, state.locality)
+        .then((data) => {
+          if (startedFor.current !== key) return;
+          setFailedCodes((prev) => prev.filter((c) => c !== code));
+          setProvinces((prev) => sortProvinces([...prev.filter((p) => p.code !== code), data]));
+        })
+        .catch(() => undefined);
     }
   };
 
@@ -257,7 +302,20 @@ export default function App() {
     return sortFacilities(out, state.sort);
   }, [provinces, state.province, state.a11y, state.sort]);
 
-  const stats = useMemo(() => provinceStats(facilities), [facilities]);
+  // Porównanie województw liczone z PEŁNEGO zestawu — przy aktywnym filtrze
+  // województwa wykres pokazywałby jeden pasek i tracił sens
+  const statsFacilities = useMemo<Facility[]>(() => {
+    const out: Facility[] = [];
+    for (const p of provinces) {
+      for (const rec of p.records) {
+        const f = toFacility(rec, p.code, p.name);
+        if (f && matchesA11y(f, state.a11y as A11yKey[])) out.push(f);
+      }
+    }
+    return out;
+  }, [provinces, state.a11y]);
+
+  const stats = useMemo(() => provinceStats(statsFacilities), [statsFacilities]);
 
   const medianDays = useMemo(() => {
     const d = facilities.map((f) => f.days).filter((x): x is number => x !== null).sort((a, b) => a - b);
@@ -280,6 +338,7 @@ export default function App() {
         mode={mode}
         onMode={goMode}
         onHome={() => {
+          startedFor.current = ''; // wiszące worker'y NFZ przestaną zapisywać wyniki
           modeRef.current = 'terminy';
           setMode('terminy');
           setState(DEFAULT_STATE);
@@ -287,6 +346,7 @@ export default function App() {
           setTargetsDone(0);
           setTargetsTotal(0);
           setError(null);
+          setFailedCodes([]);
           syncUrl(DEFAULT_STATE, 'terminy');
           window.scrollTo({ top: 0 });
         }}
@@ -482,6 +542,22 @@ export default function App() {
               </div>
             )}
 
+            {!loading && failedCodes.length > 0 && (
+              <p className="mt-4 flex flex-wrap items-center gap-x-1.5 gap-y-1 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-200">
+                <span>
+                  Brak danych z: {failedCodes.map((c) => provinceName(c)).join(', ')} — wyniki poniżej są
+                  niepełne.
+                </span>
+                <button
+                  type="button"
+                  onClick={retryMissing}
+                  className="font-semibold underline underline-offset-2 hover:text-amber-900 dark:hover:text-amber-100"
+                >
+                  Dociągnij
+                </button>
+              </p>
+            )}
+
             {!loading && !error && targetsDone === targetsTotal && provinces.length > 0 && facilities.length === 0 && (
               <div className="mt-6">
                 <EmptyState onPickHint={search} />
@@ -520,7 +596,7 @@ export default function App() {
                   )}
                 </div>
                 <aside className="lg:sticky lg:top-20 lg:self-start">
-                  <AiPanel benefit={state.benefit} facilities={facilities} />
+                  <AiPanel benefit={state.benefit} kase={state.kase} facilities={facilities} />
                 </aside>
               </div>
             )}

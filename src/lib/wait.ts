@@ -48,6 +48,10 @@ export function toFacility(
 
   const lat = typeof a['latitude'] === 'number' ? (a['latitude'] as number) : null;
   const lon = typeof a['longitude'] === 'number' ? (a['longitude'] as number) : null;
+  // marker klientowski: geoResolve zapisuje geo:'miss' przy nietrafionym geokodowaniu,
+  // żeby mapa nie czekała w nieskończoność na adresy, których Nominatim nie zna
+  const geoRaw = a['geo'];
+  const geo = geoRaw === 'miss' ? ('miss' as const) : null;
 
   return {
     id: str(rec.id) || `${provider}|${str(a['address'])}|${str(a['benefit'])}`,
@@ -60,7 +64,7 @@ export function toFacility(
     provinceName,
     lat: lat === 0 || lat === null ? null : lat,
     lon: lon === 0 || lon === null ? null : lon,
-    geo: null,
+    geo,
     days,
     waitLabel,
     awaiting: typeof providerData['awaiting'] === 'number' ? (providerData['awaiting'] as number) : null,

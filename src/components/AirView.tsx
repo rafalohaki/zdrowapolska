@@ -1,9 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AlertIcon, PinIcon } from './Icons';
-
-const API_BASE =
-  (import.meta as { env?: Record<string, string> }).env?.VITE_API_BASE ??
-  (import.meta.env?.DEV ? 'http://localhost:2363' : 'https://yeapi.wpme.pl');
+import { API_BASE } from '../lib/api';
 
 type AirPollutant = { wskaznik: string; kategoria: string | null; wartosc: number | null };
 type AirStation = { id: number; name: string; city: string; street: string | null };
@@ -120,9 +117,34 @@ export function AirView() {
     setLoading(true);
     setError(null);
     const seq = ++loadSeqRef.current;
-    // stacja dokładna; gdy backend nie zna parametru station= — fallback na miejscowość
+    // stacja dokładna; gdy backend nie zna parametru station= albo id stacji jest
+    // nieaktualne (odpowiedź 200 ze station:null) — fallback na miejscowość
     fetchAirByStation(st.id)
+      .then((d) => (d.station ? d : fetchAirByLocality(st.city)))
       .catch(() => fetchAirByLocality(st.city))
+      .then((d) => {
+        if (loadSeqRef.current === seq) setData(d);
+      })
+      .catch((err: unknown) => {
+        if (loadSeqRef.current === seq) setError(err instanceof Error ? err.message : 'Nieznany błąd');
+      })
+      .finally(() => {
+        if (loadSeqRef.current === seq) setLoading(false);
+      });
+  };
+
+  // wyszukiwanie po wpisanej miejscowości — droga awaryjna, gdy autouzupełnianie
+  // nie ma stacji (lub się wywaliło), a backend potrafi zgeokodować nazwę
+  const loadLocality = (loc: string) => {
+    const q = loc.trim();
+    if (q.length < 3) return;
+    setShowSug(false);
+    setSuggestions([]);
+    pickedRef.current = q;
+    setLoading(true);
+    setError(null);
+    const seq = ++loadSeqRef.current;
+    fetchAirByLocality(q)
       .then((d) => {
         if (loadSeqRef.current === seq) setData(d);
       })
@@ -210,13 +232,18 @@ export function AirView() {
             } else if (open && e.key === 'ArrowUp') {
               e.preventDefault();
               setHighlight((h) => (h - 1 + suggestions.length) % suggestions.length);
-            } else if (open && e.key === 'Enter') {
+            } else if (e.key === 'Enter') {
               e.preventDefault();
-              const pick =
-                highlight >= 0 && highlight < suggestions.length
-                  ? suggestions[highlight]!
-                  : suggestions[0]!;
-              loadStation(pick);
+              if (open) {
+                const pick =
+                  highlight >= 0 && highlight < suggestions.length
+                    ? suggestions[highlight]!
+                    : suggestions[0]!;
+                loadStation(pick);
+              } else {
+                // brak/zamknięte podpowiedzi — szukaj po samej miejscowości
+                loadLocality(query);
+              }
             }
           }}
           placeholder="Miejscowość, np. Kraków…"
@@ -228,6 +255,14 @@ export function AirView() {
           autoComplete="off"
           className="mt-2 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 text-sm shadow-card outline-none transition placeholder:text-slate-400 focus:border-brand-400"
         />
+        <button
+          type="button"
+          onClick={() => loadLocality(query)}
+          disabled={loading || query.trim().length < 3}
+          className="mt-2 w-full rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:px-6"
+        >
+          Sprawdź powietrze
+        </button>
         {showSug && query.trim().length >= 3 && suggestions.length > 0 && (
           <ul
             id="air-listbox"
@@ -360,6 +395,19 @@ export function AirView() {
           </ul>
           <p className="mt-3 text-xs text-slate-400 dark:text-slate-500">
             Pomiary obywatelskie mogą odbiegać od stacji referencyjnych — traktuj je orientacyjnie.
+          </p>
+        </div>
+      )}
+
+      {/* żadna stacja ani czujnik w okolicy — bez tego byłby po prostu pusty ekran */}
+      {!loading && !error && data && !data.station && !data.community && !data.airly && (
+        <div className="animate-fade-up mt-6 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 text-center shadow-card">
+          <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
+            Brak pomiarów dla tej miejscowości
+          </p>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            GIOŚ nie ma tu stacji i w okolicy nie ma czujników obywatelskich — spróbuj większej
+            miejscowości w pobliżu (np. Kraków, Warszawa).
           </p>
         </div>
       )}
