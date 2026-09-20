@@ -147,6 +147,18 @@ export function TerminyMap({
             attribution: '© OpenStreetMap',
             maxZoom: 18,
           }).addTo(mapRef.current);
+          // Leaflet nadaje zoomom angielskie title/aria-label — polska aplikacja
+          for (const el of mapRef.current
+            .getContainer()
+            .querySelectorAll<HTMLElement>('.leaflet-bar a')) {
+            if (el.classList.contains('leaflet-control-zoom-in')) {
+              el.title = 'Przybliż';
+              el.setAttribute('aria-label', 'Przybliż');
+            } else if (el.classList.contains('leaflet-control-zoom-out')) {
+              el.title = 'Oddal';
+              el.setAttribute('aria-label', 'Oddal');
+            }
+          }
         }
         const map = mapRef.current;
         map.eachLayer((layer) => {
