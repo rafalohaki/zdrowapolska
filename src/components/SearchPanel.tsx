@@ -299,7 +299,7 @@ export function SearchPanel({
           <button
             type="button"
             id="szukaj-btn"
-            onClick={submit}
+            onClick={() => void submit()}
             className="rounded-xl bg-brand-600 px-6 py-3 text-base font-semibold text-white shadow-card transition hover:bg-brand-700 active:scale-[0.98] sm:col-span-2 lg:col-span-1"
           >
             Szukaj
