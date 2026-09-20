@@ -1,8 +1,9 @@
+import { displayBenefit } from '../lib/wait';
 import { AlertIcon } from './Icons';
 
 export function CardSkeleton() {
   return (
-    <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-card">
+    <div className="animate-pulse rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-card">
       <div className="flex items-start gap-4">
         <div className="h-8 w-8 shrink-0 rounded-full bg-slate-200 dark:bg-slate-700" />
         <div className="flex-1 space-y-2.5">
@@ -14,9 +15,6 @@ export function CardSkeleton() {
           <div className="h-3 w-1/2 overflow-hidden rounded bg-slate-100 dark:bg-slate-800" />
           <div className="h-8 w-40 overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-800" />
         </div>
-      </div>
-      <div className="pointer-events-none relative -mt-12 h-0">
-        <div className="animate-shimmer h-full w-1/3 bg-gradient-to-r from-transparent via-white/60 to-transparent" />
       </div>
     </div>
   );
@@ -66,7 +64,7 @@ export function EmptyState({ onPickHint }: { onPickHint: (name: string) => void 
             onClick={() => onPickHint(n)}
             className="rounded-full bg-brand-50 px-3.5 py-1.5 text-xs font-medium text-brand-700 transition hover:bg-brand-100 dark:bg-brand-500/10 dark:text-brand-300 dark:hover:bg-brand-500/20"
           >
-            {n}
+            {displayBenefit(n)}
           </button>
         ))}
       </div>

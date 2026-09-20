@@ -7,6 +7,12 @@
 
 > Kategorie HackYeah: **Sport & Healthcare** · **Artificial Intelligence**
 
+## 🔗 Live demo
+
+**https://zdrowapolska.autarch.workers.dev** — backend: `yeapi.wpme.pl` (tunel Cloudflare).
+
+Nagrania demo: [demo.webm](docs/demo/demo.webm) · [demo-full.webm](docs/demo/demo-full.webm) · [demo-final.webm](docs/demo/demo-final.webm)
+
 ## 🖼️ Zrzuty ekranu
 
 | Ranking terminów (ciemny) | Mapa placówek | Raport ogólnopolski |

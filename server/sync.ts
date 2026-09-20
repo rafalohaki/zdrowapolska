@@ -20,7 +20,7 @@ import {
 } from './db';
 import { computeInsights } from './insights';
 import { getBenefits, getCompare } from './nfz';
-import { notifyQueueChanges, type QueueChange } from './notify';
+import { notifyError, notifyQueueChanges, type QueueChange } from './notify';
 import { reindexBenefits } from './search';
 
 const ALPHABET = 'aąbcćdeęfghijklmnóprstuwyzźż'.split('');
@@ -69,7 +69,18 @@ async function walkBenefits(): Promise<string[]> {
       return;
     }
     for (const name of res.items) found.add(name);
-    if (depth >= 7) return; // rozsądny limit głębokości
+    // count>25 → items obcięte: nazwa kończąca się DOKŁADNIE na prefiksie
+    // nie trafi do żadnej gałęzi prefixX — dociągaj kolejne strony wyników,
+    // żeby granica dopasowania nie połykała nazw po cichu
+    const extraPages = Math.min(Math.ceil(res.count / LIMIT) - 1, 8);
+    for (let page = 2; page <= extraPages + 1; page++) {
+      const more = await getBenefits(prefix, page);
+      for (const name of more.items) found.add(name);
+    }
+    if (depth >= 7) {
+      log(`walkBenefits: prefix '${prefix}' ma ${res.count} trafień — odcięto gałąź na depth 7, rozważ nowy seed`);
+      return;
+    }
     for (const letter of ALPHABET) {
       await walk(prefix + letter, depth + 1);
     }
@@ -174,6 +185,13 @@ async function runSync(scope: 'benefits' | 'queues' | 'all'): Promise<void> {
   } catch (err) {
     status.lastError = err instanceof Error ? err.message : String(err);
     console.error('[sync] failed:', err);
+    // awaria upstream (np. NFZ leży): nie czekaj pełnego cyklu — retry za ~45 min
+    // + alarm na Discordzie, bo bez niego snapshoty gniją pod TTL w ciszy
+    const retry = setTimeout(() => {
+      if (!status.running) void runSync(scope);
+    }, 45 * 60 * 1000);
+    retry.unref?.();
+    void notifyError('Synchronizacja NFZ nie powiodła się', status.lastError);
   } finally {
     status.running = false;
     status.phase = 'idle';
@@ -213,11 +231,14 @@ export function startSyncScheduler(): void {
     }
   }
 
+  // clamp: setInterval przyjmuje int32 — powyżej ~596 h ms przepełnia się
+  // i timer odpalałby się natychmiast w kółko (permanentne młócenie NFZ)
+  const intervalMs = Math.min(intervalH, 24 * 7) * 3_600_000;
   setInterval(
     () => {
       log(`harmonogram: cykliczna synchronizacja (co ${intervalH} h)`);
       triggerSync('all');
     },
-    intervalH * 3_600_000,
+    intervalMs,
   ).unref();
 }

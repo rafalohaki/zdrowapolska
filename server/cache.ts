@@ -69,7 +69,17 @@ export async function cached<T>(
   const promise = (async () => {
     const raw = await redisGet(key);
     if (raw) {
-      memory.set(key, { value: raw, expires: now + ttlMs });
+      // hit z Redisa: w pamięci trzymaj tylko przez POZOSTAŁY czas życia wpisu —
+      // pełny ttlMs za każdym hitem wydłużałby pamięć do ~2× TTL
+      let remain = ttlMs;
+      const r = getRedis();
+      if (r) {
+        try {
+          const t = await r.ttl(key);
+          if (t > 0) remain = Math.min(ttlMs, t * 1000);
+        } catch { /* bez ttl() zachowaj dotychczasowe zachowanie */ }
+      }
+      memory.set(key, { value: raw, expires: now + remain });
       return JSON.parse(raw) as T;
     }
     const value = await loader();

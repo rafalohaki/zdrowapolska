@@ -93,9 +93,17 @@ export function waitLevel(days: number | null): WaitLevel {
   return 'bad';
 }
 
+/** Polska odmiana liczebnika: plural(1,'dzień','dni','dni') */
+export function plural(n: number, one: string, few: string, many: string): string {
+  if (n === 1) return one;
+  const last = n % 10;
+  const tens = n % 100;
+  return last >= 2 && last <= 4 && !(tens >= 12 && tens <= 14) ? few : many;
+}
+
 /** "92" → "3 mies." — krótki format do badge'ów i wykresów */
 export function formatDaysShort(days: number | null): string {
-  if (days === null) return 'bd';
+  if (days === null) return '—';
   if (days === 1) return '1 dzień';
   if (days <= 45) return `${days} dni`;
   const months = Math.round(days / 30.42);
@@ -116,10 +124,19 @@ export function formatDaysLong(days: number): string {
 
 /** Pluralizacja: 1 osoba, 2-4 osoby, 5+ osób */
 export function formatAwaiting(n: number | null): string {
-  if (n === null) return 'bd';
-  if (n === 1) return '1 osoba';
-  const last = n % 10;
-  const tens = n % 100;
-  if (last >= 2 && last <= 4 && !(tens >= 12 && tens <= 14)) return `${n} osoby`;
-  return `${n} osób`;
+  if (n === null) return 'brak danych';
+  return `${n.toLocaleString('pl-PL')} ${plural(n, 'osoba', 'osoby', 'osób')}`;
+}
+
+const ROMAN = /\b(ii|iii|iv|v|vi|vii|viii|ix|x)\b/g;
+
+/** Nazwy świadczeń NFZ przychodzą drukowanymi WERSALIKAMI („ODDZIAŁ KARDIOLOGICZNY")
+ *  — do prezentacji zamieniamy na naturalny zapis zdaniami. Mieszane nazwy
+ *  zostają nietknięte; numery rzymskie wracają do wielkich liter. */
+export function displayBenefit(name: string): string {
+  if (name !== name.toUpperCase()) return name;
+  const titled = name
+    .toLowerCase()
+    .replace(/(^|\s|\()(\S)/g, (_m, p: string, c: string) => p + c.toUpperCase());
+  return titled.replace(ROMAN, (m) => m.toUpperCase());
 }

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { Facility } from '../lib/types';
 import { A11Y_FILTERS } from '../lib/types';
-import { formatAwaiting, formatDaysLong } from '../lib/wait';
+import { displayBenefit, formatAwaiting, formatDaysLong } from '../lib/wait';
 import { CloseIcon, PhoneIcon, PinIcon } from './Icons';
 import { WaitBadge } from './WaitBadge';
 
@@ -76,7 +76,7 @@ export function DetailModal({ facility, onClose }: { facility: Facility; onClose
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-xl font-bold text-slate-900 dark:text-white">{facility.provider}</h2>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{facility.benefit}</p>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{displayBenefit(facility.benefit)}</p>
           </div>
           <button
             type="button"
@@ -137,13 +137,13 @@ export function DetailModal({ facility, onClose }: { facility: Facility; onClose
           </div>
           <div>
             <dt className="text-xs font-medium tracking-wide text-slate-400 dark:text-slate-500 uppercase">
-              Statystyki oddziału z miesiąca
+              Statystyki placówki zgłoszone do NFZ
             </dt>
             <dd className="mt-1 text-sm text-slate-800 dark:text-slate-100">{facility.statsUpdate ?? '—'}</dd>
           </div>
           <div>
             <dt className="text-xs font-medium tracking-wide text-slate-400 dark:text-slate-500 uppercase">
-              Stan danych na dzień
+              Stan danych NFZ na dzień
             </dt>
             <dd className="mt-1 text-sm text-slate-800 dark:text-slate-100">{facility.situationAsAt ?? '—'}</dd>
           </div>
@@ -168,7 +168,7 @@ export function DetailModal({ facility, onClose }: { facility: Facility; onClose
           rel="noopener noreferrer"
           className="mt-6 inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-800 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 transition hover:border-brand-300 hover:text-brand-700"
         >
-          <PinIcon className="h-4 w-4" /> Wyznacz trasę (OpenStreetMap)
+          <PinIcon className="h-4 w-4" /> Wyznacz trasę (OpenStreetMap) ↗
         </a>
 
         <div className="mt-6 rounded-xl bg-slate-50 dark:bg-slate-800/50 p-4 text-xs leading-relaxed text-slate-500 dark:text-slate-400">

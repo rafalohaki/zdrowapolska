@@ -104,14 +104,23 @@ export function AiPanel({
       </div>
 
       <div className="mt-4 space-y-2.5">
+        <label htmlFor="ai-question" className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+          Twoje pytanie do doradcy (opcjonalne)
+        </label>
         <textarea
+          id="ai-question"
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
           rows={2}
           maxLength={500}
-          placeholder="Pytanie (opcjonalnie): np. „Która placówka ma najlepszy dojazd?”"
+          placeholder="np. „Która placówka ma najlepszy dojazd?”"
           className="w-full resize-none rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 text-sm outline-none placeholder:text-slate-400 dark:text-slate-100 focus:border-brand-400"
         />
+        {question.length > 400 && (
+          <p className="text-right text-[11px] tabular-nums text-slate-400 dark:text-slate-500">
+            {question.length}/500
+          </p>
+        )}
         <button
           type="button"
           onClick={() => ask(question)}

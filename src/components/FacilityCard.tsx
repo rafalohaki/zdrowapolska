@@ -1,6 +1,7 @@
 import type { Facility } from '../lib/types';
 import { A11Y_FILTERS } from '../lib/types';
-import { formatAwaiting } from '../lib/wait';
+import { displayBenefit, formatAwaiting } from '../lib/wait';
+import { telHref } from '../lib/html';
 import { WaitBadge } from './WaitBadge';
 import { PhoneIcon, PinIcon, UsersIcon } from './Icons';
 
@@ -20,11 +21,17 @@ export function FacilityCard({
   onDetails: (f: Facility) => void;
 }) {
   const rankStyle = RANK_STYLES[rank] ?? 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400';
-  const activeFlags = A11Y_FILTERS.filter((f) => f.key !== 'forChildren' && facility.flags[f.key]);
+  const activeFlags = A11Y_FILTERS.filter((f) => facility.flags[f.key]);
 
   return (
     <article
-      className={`animate-fade-up rounded-2xl border bg-white dark:bg-slate-900 p-5 shadow-card transition hover:shadow-lift ${
+      onClick={(e) => {
+        // karta wygląda klikalnie (hover-lift) → klika też: chyba że trafiono
+        // w link/przycisk, który ma własną akcję
+        if ((e.target as HTMLElement).closest('a,button')) return;
+        onDetails(facility);
+      }}
+      className={`animate-fade-up cursor-pointer rounded-2xl border bg-white dark:bg-slate-900 p-5 shadow-card transition hover:shadow-lift ${
         rank === 1 ? 'border-brand-300 ring-1 ring-brand-200' : 'border-slate-200 dark:border-slate-800'
       }`}
     >
@@ -41,7 +48,9 @@ export function FacilityCard({
             <WaitBadge days={facility.days} />
           </div>
 
-          <p className="mt-0.5 truncate text-sm text-slate-500 dark:text-slate-400">{facility.benefit}</p>
+          <p className="mt-0.5 truncate text-sm text-slate-500 dark:text-slate-400" title={facility.benefit}>
+            {displayBenefit(facility.benefit)}
+          </p>
 
           <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-600 dark:text-slate-300">
             <span className="inline-flex items-center gap-1.5">
@@ -73,14 +82,14 @@ export function FacilityCard({
             <button
               type="button"
               onClick={() => onDetails(facility)}
-              className="rounded-lg bg-slate-900 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-slate-700 dark:hover:bg-slate-600"
+              className="rounded-lg bg-slate-900 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-slate-700 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
             >
               Szczegóły
             </button>
             {facility.phone && (
               <a
-                href={`tel:${facility.phone.replace(/\s/g, '')}`}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-800 px-3.5 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 transition hover:border-brand-300 hover:text-brand-700"
+                href={`tel:${telHref(facility.phone)}`}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-800 px-3.5 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 transition hover:border-brand-300 hover:text-brand-700 dark:hover:border-brand-500 dark:hover:text-brand-300"
               >
                 <PhoneIcon className="h-4 w-4" />
                 {facility.phone}

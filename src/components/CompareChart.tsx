@@ -1,5 +1,14 @@
 import type { Facility } from '../lib/types';
-import { formatDaysShort } from '../lib/wait';
+import { formatDaysShort, plural, waitLevel } from '../lib/wait';
+
+// kolory słupków = te same poziomy co WaitBadge (spójny język „jak długo czeka")
+const BAR_COLOR: Record<string, string> = {
+  great: 'bg-emerald-500',
+  ok: 'bg-lime-500',
+  slow: 'bg-amber-400',
+  bad: 'bg-rose-500',
+  unknown: 'bg-slate-300 dark:bg-slate-600',
+};
 
 export type ProvinceStat = {
   code: string;
@@ -55,7 +64,7 @@ export function CompareChart({
           <button
             type="button"
             onClick={() => onSelect(null)}
-            className="text-sm font-medium text-brand-700 hover:underline"
+            className="text-sm font-medium text-brand-700 hover:underline dark:text-brand-400"
           >
             ← pokaż całą Polskę
           </button>
@@ -66,8 +75,7 @@ export function CompareChart({
         {stats.map((s) => {
           const days = s.bestDays;
           const width = days === null ? 0 : days === 0 ? 5 : Math.max((days / max) * 100, 4);
-          const color =
-            days === null ? 'bg-slate-300' : days === 0 ? 'bg-brand-600' : days <= 45 ? 'bg-brand-500' : 'bg-amber-400';
+          const color = BAR_COLOR[waitLevel(days)];
           const isSel = selected === s.code;
           return (
             <li key={s.code}>
@@ -100,8 +108,8 @@ export function CompareChart({
                 <span className="w-16 shrink-0 text-right text-sm font-semibold tabular-nums text-slate-800 dark:text-slate-100 sm:w-24">
                   {formatDaysShort(s.bestDays)}
                 </span>
-                <span className="hidden w-20 shrink-0 text-right text-xs tabular-nums text-slate-400 dark:text-slate-500 sm:block">
-                  {s.facilities} plac.
+                <span className="hidden w-24 shrink-0 text-right text-xs tabular-nums text-slate-500 dark:text-slate-400 sm:block">
+                  {s.facilities} {plural(s.facilities, 'placówka', 'placówki', 'placówek')}
                 </span>
               </button>
             </li>
@@ -109,7 +117,7 @@ export function CompareChart({
         })}
       </ul>
 
-      <p className="mt-3 text-xs text-slate-400 dark:text-slate-500">
+      <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
         Wartość = najkrótszy czas oczekiwania spośród pobranych placówek w województwie. Kliknij, aby
         przefiltrować ranking.
         {refPct !== null && (

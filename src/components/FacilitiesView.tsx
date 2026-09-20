@@ -29,6 +29,8 @@ export function FacilitiesView(props?: {
   onProvinceChange?: (code: string) => void;
   /** Cross-link: „sprawdź kolejkę" — przechodzi do trybu terminów z miastem/świadczeniem */
   onQueueClick?: (locality: string, benefit?: string) => void;
+  /** tryb osadzony (Wsparcie): błąd GSL pokazuje kompaktową notkę, nie ścianę ErrorState */
+  degradeError?: boolean;
 }) {
   const [category, setCategory] = useState<GslCategoryKey>(props?.initialCategory ?? 'apteki');
   const [innerProvince, setInnerProvince] = useState('06');
@@ -45,6 +47,8 @@ export function FacilitiesView(props?: {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [moreError, setMoreError] = useState<string | null>(null);
+  // data ostatniego zapisu, gdy backend serwuje snapshot zamiast żywego GSL
+  const [staleAt, setStaleAt] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
   const [searchKey, setSearchKey] = useState(
     `${props?.initialCategory ?? 'apteki'}:${props?.province ?? '06'}:${(props?.initialName ?? '').trim().toLowerCase()}`,
@@ -70,6 +74,7 @@ export function FacilitiesView(props?: {
         setResults(res.results);
         setTotal(res.total);
         setPage(res.page);
+        setStaleAt(res.stale ? (res.fetchedAt ?? null) : null);
       })
       .catch((err: unknown) => {
         if (epochRef.current === epoch) setError(err instanceof Error ? err.message : 'Nieznany błąd');
@@ -291,10 +296,26 @@ export function FacilitiesView(props?: {
         </div>
       )}
 
-      {!loading && error && (
+      {!loading && error && props?.degradeError && (
+        <p className="mt-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-200">
+          Lista placówek chwilowo niedostępna (awaria NFZ).{' '}
+          <button type="button" onClick={() => run(category, province, name)} className="font-semibold underline underline-offset-2">
+            Spróbuj ponownie
+          </button>
+        </p>
+      )}
+
+      {!loading && error && !props?.degradeError && (
         <div className="mt-6">
           <ErrorState message={error} onRetry={() => run(category, province, name)} />
         </div>
+      )}
+
+      {!loading && !error && staleAt !== null && (
+        <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-200">
+          Serwis NFZ „Gdzie się leczyć" nie odpowiada — pokazuję ostatnio zapisaną listę z{' '}
+          {new Date(staleAt).toLocaleDateString('pl-PL')}.
+        </p>
       )}
 
       {!loading && !error && searched && total !== null && (

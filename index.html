@@ -8,11 +8,15 @@
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="apple-touch-icon" href="/icon.svg" />
+    <!-- iOS nie obsługuje SVG w apple-touch-icon — potrzebny PNG -->
+    <link rel="apple-touch-icon" href="/icon-192.png" />
     <meta property="og:title" content="ZdrowaPolska — najkrótsza kolejka do specjalisty" />
     <meta property="og:description" content="Porównujemy oficjalne czasy oczekiwania NFZ w 16 województwach. Apteki, SOR-y, nocna pomoc i doradca AI." />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://zdrowapolska.autarch.workers.dev" />
+    <meta property="og:site_name" content="ZdrowaPolska" />
+    <meta property="og:locale" content="pl_PL" />
+    <link rel="canonical" href="https://zdrowapolska.autarch.workers.dev" />
     <!-- crawler'y social wymagają absolutnego URL; przy zmianie domeny zaktualizuj -->
     <meta property="og:image" content="https://zdrowapolska.autarch.workers.dev/og.png" />
     <meta property="og:image:width" content="1440" />

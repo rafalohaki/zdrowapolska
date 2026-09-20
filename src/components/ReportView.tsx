@@ -109,7 +109,7 @@ export function ReportView() {
 
       {!loading && report && report.items.length > 0 && (
         <>
-          <div className="mt-5 grid grid-cols-3 gap-2 sm:gap-3">
+          <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-3 sm:gap-3">
             <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-card sm:p-4 dark:border-slate-800 dark:bg-slate-900">
               <p className="text-xs text-slate-500 dark:text-slate-400">Specjalizacje w raporcie</p>
               <p className="mt-1 text-xl font-bold tabular-nums text-slate-900 sm:text-2xl dark:text-white">{report.items.length}</p>
@@ -137,7 +137,7 @@ export function ReportView() {
                     <div className="flex flex-wrap items-baseline justify-between gap-2">
                       <h3 className="font-semibold text-slate-900 dark:text-white">{item.label}</h3>
                       <span className="text-sm font-semibold tabular-nums text-slate-800 dark:text-slate-100">
-                        {item.avgDays === null ? 'bd' : `śr. ${item.avgDays} dni`}
+                        {item.avgDays === null ? 'brak danych' : `śr. ${item.avgDays} dni`}
                       </span>
                     </div>
                     <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
@@ -147,7 +147,7 @@ export function ReportView() {
                       />
                     </div>
                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-slate-500 dark:text-slate-400">
-                      <span>{fmtAwaiting(item.awaitingTotal)} w kolejkach</span>
+                      <span>{item.awaitingTotal === 0 ? 'brak zgłoszonych kolejek' : `${fmtAwaiting(item.awaitingTotal)} w kolejkach`}</span>
                       <span>{item.facilities} placówek</span>
                       <span>najszybciej: {formatDaysShort(item.minDays)}</span>
                       <span>najdłużej: {formatDaysShort(item.maxDays)}</span>

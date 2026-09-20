@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { fetchBenefits, fetchLocalities } from '../lib/api';
 import { PROVINCES } from '../lib/provinces';
 import { A11Y_FILTERS, type A11yKey, type SortKey } from '../lib/types';
-import { AlertIcon, PinIcon, SearchIcon, WheelchairIcon } from './Icons';
+import { displayBenefit } from '../lib/wait';
+import { AlertIcon, PinIcon, SearchIcon } from './Icons';
 
 const HINTS = ['kardiolog', 'ortoped', 'okulistyka', 'rehabilitacja', 'endokrynolog', 'urolog'];
 
@@ -121,15 +122,34 @@ export function SearchPanel({
     onSubmit(name, locQuery.trim());
   };
 
-  const submit = () => {
+  // surowa fraza ('kardiolog') nie jest nazwą świadczenia — NFZ zwraca wtedy
+  // pusto. Mapujemy ją na pierwszy traf słownika, jakiejkolwiek by to było
+  // (items mogą być stare — debounce mógł jeszcze nie odpalić).
+  const submit = async () => {
     const q = query.trim();
-    if (q.length >= 3) onSubmit(q, locQuery.trim());
-    else inputRef.current?.focus();
+    if (q.length < 3) {
+      inputRef.current?.focus();
+      return;
+    }
+    if (!items.includes(q)) {
+      try {
+        const hits = await fetchBenefits(q);
+        const best = hits.find((h) => h.toLowerCase() === q.toLowerCase()) ?? hits[0];
+        if (best) {
+          setQuery(best);
+          onSubmit(best, locQuery.trim());
+          return;
+        }
+      } catch {
+        /* słownik nie odpowiada — puszczamy frazę jak jest */
+      }
+    }
+    onSubmit(q, locQuery.trim());
   };
 
   const onKey = (e: React.KeyboardEvent) => {
     if (!open || !items.length) {
-      if (e.key === 'Enter') submit();
+      if (e.key === 'Enter') void submit();
       return;
     }
     if (e.key === 'ArrowDown') {
@@ -148,7 +168,7 @@ export function SearchPanel({
   return (
     <div className={hero ? 'w-full max-w-3xl' : 'w-full'}>
       <div ref={boxRef} className="relative">
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-[1fr_minmax(140px,180px)_minmax(130px,150px)_minmax(140px,150px)_auto]">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-[1fr_minmax(150px,190px)_minmax(150px,190px)_minmax(150px,170px)_auto]">
           <div className="relative">
             <SearchIcon className="pointer-events-none absolute top-1/2 left-3.5 h-5 w-5 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
             <input
@@ -163,7 +183,7 @@ export function SearchPanel({
               onKeyDown={onKey}
               placeholder="Specjalizacja, np. kardiolog…"
               aria-label="Szukaj świadczenia NFZ"
-              aria-expanded={open}
+              aria-expanded={open && items.length > 0}
               role="combobox"
               aria-autocomplete="list"
               aria-activedescendant={highlight >= 0 ? `benefit-opt-${highlight}` : undefined}
@@ -193,7 +213,7 @@ export function SearchPanel({
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && (!locOpen || locHighlight < 0)) {
                   // Enter bez wyboru podpowiedzi = „Szukaj"
-                  submit();
+                  void submit();
                   return;
                 }
                 if (!locOpen || !locItems.length) return;
@@ -223,7 +243,7 @@ export function SearchPanel({
                 className="absolute z-30 mt-2 max-h-64 w-full min-w-56 overflow-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-1 shadow-lift"
               >
                 {locItems.map((name, i) => (
-                  <li key={name}>
+                  <li key={name} role="presentation">
                     <button
                       type="button"
                       id={`locality-opt-${i}`}
@@ -253,7 +273,7 @@ export function SearchPanel({
             value={province}
             onChange={(e) => onChange({ province: e.target.value })}
             aria-label="Województwo"
-            className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-3 text-sm shadow-card outline-none focus:border-brand-400"
+            className="w-full min-w-0 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-3 text-sm shadow-card outline-none focus:border-brand-400"
           >
             <option value="all">Cała Polska</option>
             {PROVINCES.map((p) => (
@@ -267,7 +287,7 @@ export function SearchPanel({
             value={kase}
             onChange={(e) => onChange({ kase: e.target.value === '2' ? 2 : 1 })}
             aria-label="Typ przypadku"
-            className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-3 text-sm shadow-card outline-none focus:border-brand-400"
+            className="w-full min-w-0 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-3 text-sm shadow-card outline-none focus:border-brand-400"
           >
             <option value={1}>Przypadek stabilny</option>
             <option value={2}>Przypadek pilny</option>
@@ -277,7 +297,7 @@ export function SearchPanel({
             type="button"
             id="szukaj-btn"
             onClick={submit}
-            className="rounded-xl bg-brand-600 px-6 py-3 text-base font-semibold text-white shadow-card transition hover:bg-brand-700 active:scale-[0.98]"
+            className="rounded-xl bg-brand-600 px-6 py-3 text-base font-semibold text-white shadow-card transition hover:bg-brand-700 active:scale-[0.98] sm:col-span-2 lg:col-span-1"
           >
             Szukaj
           </button>
@@ -289,19 +309,27 @@ export function SearchPanel({
             role="listbox"
             className="absolute z-30 mt-2 max-h-72 w-full overflow-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-1 shadow-lift"
           >
+            {items.length === 0 && loadingDict && (
+              <li className="px-4 py-2.5 text-sm text-slate-400 dark:text-slate-500">szukam podpowiedzi…</li>
+            )}
             {items.map((name, i) => (
-              <li key={name} id={`benefit-opt-${i}`} role="option" aria-selected={i === highlight}>
+              /* li = presentation: rola option na button — li[role=option] z
+                 zagnieżdżonym interaktywnym myli czytniki ekranu */
+              <li key={name} role="presentation">
                 <button
                   type="button"
+                  id={`benefit-opt-${i}`}
+                  role="option"
+                  aria-selected={i === highlight}
                   onMouseEnter={() => setHighlight(i)}
                   onClick={() => pick(name)}
-                  className={`block w-full px-4 py-2 text-left text-sm ${
+                  className={`block w-full px-4 py-2.5 text-left text-sm ${
                     i === highlight
                       ? 'bg-brand-50 text-brand-800 dark:bg-brand-900/40 dark:text-brand-200'
                       : 'text-slate-700 dark:text-slate-200'
                   }`}
                 >
-                  {name}
+                  {displayBenefit(name)}
                 </button>
               </li>
             ))}
@@ -328,7 +356,7 @@ export function SearchPanel({
       </div>
 
       {error && (
-        <p className="mt-2 flex items-center gap-1.5 text-sm text-rose-600">
+        <p className="mt-2 flex items-center gap-1.5 text-sm text-rose-600 dark:text-rose-400">
           <AlertIcon className="h-4 w-4" /> {error}
         </p>
       )}
@@ -347,13 +375,12 @@ export function SearchPanel({
                     a11y: active ? a11y.filter((k) => k !== f.key) : [...a11y, f.key],
                   })
                 }
-                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition ${
+                className={`inline-flex items-center rounded-full border px-3.5 py-1.5 text-xs font-medium transition ${
                   active
                     ? 'border-brand-500 bg-brand-500 text-white'
-                    : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:border-brand-300'
+                    : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:border-brand-300 dark:hover:border-brand-500'
                 }`}
               >
-                <WheelchairIcon className="h-3.5 w-3.5" />
                 {f.label}
               </button>
             );
@@ -365,7 +392,7 @@ export function SearchPanel({
           <select
             value={sort}
             onChange={(e) => onChange({ sort: e.target.value as SortKey })}
-            className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-2 py-1 text-xs outline-none focus:border-brand-400"
+            className="min-w-0 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-2 py-1.5 text-xs outline-none focus:border-brand-400"
           >
             <option value="wait">czas oczekiwania</option>
             <option value="awaiting">liczba oczekujących</option>

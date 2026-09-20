@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchProvinceQueues } from './lib/api';
-import { toFacility } from './lib/wait';
+import { displayBenefit, plural, toFacility } from './lib/wait';
 import { provinceName } from './lib/provinces';
 import { pushHistory, loadHistory, type HistoryItem } from './lib/history';
 import type { A11yKey, Facility, ProvinceData } from './lib/types';
@@ -53,9 +53,16 @@ export default function App() {
   // kody województw, które padły podczas pobierania — po loadingu pokazujemy
   // notkę z „dociągnij", żeby ranking nie udawał pełnych danych
   const [failedCodes, setFailedCodes] = useState<string[]>([]);
+  // najstarszy stale-snapshot w wynikach — przy awarii NFZ pokazujemy
+  // „dane z DD.MM.RRRR" zamiast udawać świeżość
+  const [staleAt, setStaleAt] = useState<string | null>(null);
   const [selected, setSelected] = useState<Facility | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>(() => loadHistory());
   const startedFor = useRef<string>('');
+  // monotoniczna epoka wyszukiwania — powtórzony submit tej samej frazy daje
+  // identyczny `key`, więc stary strażnik wyścigów (porównanie kluczy) nie
+  // odcinał poprzednich workerów: podwójne zapytania i licznik >16/16
+  const runSeq = useRef(0);
   const provincesRef = useRef<ProvinceData[]>([]);
   provincesRef.current = provinces;
 
@@ -64,6 +71,7 @@ export default function App() {
       if (benefit.length < 3) return;
       const key = `${benefit}:${kase}:${locality}:${province}`;
       startedFor.current = key;
+      const seq = ++runSeq.current;
       setLoading(true);
       setError(null);
       setProvinces([]);
@@ -72,25 +80,29 @@ export default function App() {
       const targets = province === 'all' ? FETCH_ORDER : [province];
       setTargetsTotal(targets.length);
       setFailedCodes([]);
+      setStaleAt(null);
       const queue = [...targets];
       let failed = 0;
       let historyPushed = false;
 
       const worker = async () => {
         while (queue.length > 0) {
-          if (startedFor.current !== key) return;
+          if (runSeq.current !== seq) return;
           const code = queue.shift()!;
           try {
             const data = await fetchProvinceQueues(benefit, code, kase, locality);
-            if (startedFor.current !== key) return;
+            if (runSeq.current !== seq) return;
             if (!historyPushed) {
               historyPushed = true;
               setHistory(pushHistory(benefit, locality));
             }
             setFailedCodes((prev) => prev.filter((c) => c !== code));
+            if (data.source === 'stale' && data.fetchedAt) {
+              setStaleAt((prev) => (prev === null || data.fetchedAt! < prev ? data.fetchedAt! : prev));
+            }
             setProvinces((prev) => sortProvinces([...prev.filter((p) => p.code !== code), data]));
           } catch (err) {
-            if (startedFor.current !== key) return;
+            if (runSeq.current !== seq) return;
             failed += 1;
             // województwo z błędem pomijamy, ale pokazujemy stan (0 rekordów)
             setFailedCodes((prev) => (prev.includes(code) ? prev : [...prev, code]));
@@ -99,17 +111,20 @@ export default function App() {
               { code, name: provinceName(code), total: 0, records: [] },
             ]);
           }
-          if (startedFor.current !== key) return;
+          if (runSeq.current !== seq) return;
           setTargetsDone((c) => c + 1);
         }
       };
 
       await Promise.all(Array.from({ length: Math.min(CLIENT_CONCURRENCY, queue.length) }, worker));
-      if (startedFor.current !== key) return;
+      if (runSeq.current !== seq) return;
       setLoading(false);
-      // wszystkie województwa padły (backend/API NFZ niedostępne) — to błąd, nie „brak wyników"
+      // wszystkie województwa padły i nie było nawet starych snapshotów — to błąd,
+      // nie „brak wyników" (użytkownik ma internet — leży NFZ)
       if (failed === targets.length) {
-        setError('Nie udało się pobrać danych z NFZ. Sprawdź połączenie i spróbuj ponownie.');
+        setError(
+          'Serwer NFZ chwilowo nie odpowiada — to nie problem Twojego połączenia. Spróbuj ponownie za chwilę.',
+        );
       }
     },
     [],
@@ -193,11 +208,13 @@ export default function App() {
       } else {
         // wstecz do hero / b=<3 znaki — wyczyść wyniki, żeby nie wisiały pod nową frazą
         startedFor.current = '';
+        runSeq.current++;
         setProvinces([]);
         setTargetsDone(0);
         setTargetsTotal(0);
         setError(null);
         setFailedCodes([]);
+        setStaleAt(null);
       }
       window.scrollTo({ top: 0 });
     };
@@ -263,12 +280,15 @@ export default function App() {
   // dociąga województwa, które padły podczas pierwszego pobierania (429/sieć),
   // bez kasowania tego, co już jest na ekranie
   const retryMissing = () => {
-    const key = startedFor.current;
+    const seq = runSeq.current;
     for (const code of failedCodes) {
       void fetchProvinceQueues(state.benefit, code, state.kase, state.locality)
         .then((data) => {
-          if (startedFor.current !== key) return;
+          if (runSeq.current !== seq) return;
           setFailedCodes((prev) => prev.filter((c) => c !== code));
+          if (data.source === 'stale' && data.fetchedAt) {
+            setStaleAt((prev) => (prev === null || data.fetchedAt! < prev ? data.fetchedAt! : prev));
+          }
           setProvinces((prev) => sortProvinces([...prev.filter((p) => p.code !== code), data]));
         })
         .catch(() => undefined);
@@ -339,6 +359,7 @@ export default function App() {
         onMode={goMode}
         onHome={() => {
           startedFor.current = ''; // wiszące worker'y NFZ przestaną zapisywać wyniki
+          runSeq.current++;
           modeRef.current = 'terminy';
           setMode('terminy');
           setState(DEFAULT_STATE);
@@ -419,7 +440,7 @@ export default function App() {
                     onClick={() => search(h.benefit, h.locality)}
                     className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600 shadow-card transition hover:border-brand-300 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-brand-500"
                   >
-                    {h.benefit}
+                    {displayBenefit(h.benefit)}
                     {h.locality ? ` · ${h.locality}` : ''}
                   </button>
                 ))}
@@ -445,17 +466,19 @@ export default function App() {
           <section className="mx-auto max-w-6xl px-4 pt-6 pb-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h2 className="text-lg font-bold text-slate-900 dark:text-white">
-                  „{state.benefit}"
+                <h1 className="text-lg font-bold text-slate-900 dark:text-white">
+                  „{displayBenefit(state.benefit)}"
                   <span className="ml-2 text-sm font-normal text-slate-500 dark:text-slate-400">
                     {state.locality ? state.locality : state.province === 'all' ? 'cała Polska' : `woj. ${provinceName(state.province)}`}
                     {state.kase === 2 && ' • przypadek pilny'}
                   </span>
-                </h2>
-                <p className="text-sm text-slate-500 dark:text-slate-400" aria-live="polite">
+                </h1>
+                {/* live-region tylko na gotowy wynik — podczas ładowania SR czytałoby
+                    16× rosnący licznik zamiast końcowego komunikatu */}
+                <p className="text-sm text-slate-500 dark:text-slate-400" aria-live={loading ? 'off' : 'polite'}>
                   {loading && facilities.length === 0
                     ? 'pobieram dane…'
-                    : `${facilities.length} placówek`}
+                    : `${facilities.length} ${plural(facilities.length, 'placówka', 'placówki', 'placówek')}`}
                   {state.a11y.length > 0 && ` (po filtrze dostępności)`} ·{" "}
                   <abbr title="Prognozowany Czas Udzielenia Świadczenia — statystyka NFZ, aktualizowana miesięcznie" className="underline decoration-dotted">
                     PCUS
@@ -515,7 +538,7 @@ export default function App() {
                         state.view === v ? 'bg-brand-600 text-white' : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:text-white'
                       }`}
                     >
-                      {v === 'ranking' ? 'Ranking' : v === 'mapa' ? 'Mapa' : 'Porównanie województw'}
+                      {v === 'ranking' ? 'Ranking' : v === 'mapa' ? 'Mapa' : 'Porównanie'}
                     </button>
                   ))}
                 </div>
@@ -540,6 +563,14 @@ export default function App() {
                   onRetry={() => void runSearch(state.benefit, state.kase, state.locality, state.province)}
                 />
               </div>
+            )}
+
+            {!loading && staleAt !== null && (
+              <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-200">
+                NFZ chwilowo nie odpowiada — pokazuję dane z{' '}
+                {new Date(staleAt).toLocaleDateString('pl-PL', { day: 'numeric', month: 'long', year: 'numeric' })}{' '}
+                (ostatnia znana synchronizacja).
+              </p>
             )}
 
             {!loading && failedCodes.length > 0 && (
@@ -574,7 +605,7 @@ export default function App() {
                       ))}
                       {facilities.length > 30 && (
                         <p className="pt-2 text-center text-sm text-slate-400 dark:text-slate-500">
-                          Pokazuję 30 z {facilities.length} placówek — zawęź wyniki filtrem województwa lub
+                          Pokazuję 30 z {facilities.length} {plural(facilities.length, 'placówki', 'placówek', 'placówek')} — zawęź wyniki filtrem województwa lub
                           dostępności.
                         </p>
                       )}

@@ -82,7 +82,9 @@ function nominatimEffect(address: string) {
     return { lat: Number(hit.lat), lon: Number(hit.lon) };
   }).pipe(
     Effect.retry({ times: 1, while: (e) => e._tag === 'GeoError' }),
-    Effect.catch(() => Effect.succeed(null)),
+    // 'error' ≠ null: przejściowa awaria Nominatima nie może truć cache'a jako
+    // 30-dniowy „nie znaleziono" — miss zapisujemy tylko dla faktycznego braku
+    Effect.catch(() => Effect.succeed('error' as const)),
   );
 }
 
@@ -107,9 +109,12 @@ export async function geocodeBatch(addresses: string[]): Promise<(GeoResult | nu
       resolved.set(address, null);
       continue;
     }
-    const point: { lat: number; lon: number } | null = await Effect.runPromise(
-      nominatimEffect(address),
-    );
+    const point = await Effect.runPromise(nominatimEffect(address));
+    if (point === 'error') {
+      // błąd sieciowy/HTTP — nie zapisuj miss, zapytamy ponownie następnym razem
+      resolved.set(address, null);
+      continue;
+    }
     dbSave(address, point);
     resolved.set(address, point ? { address, lat: point.lat, lon: point.lon } : null);
   }

@@ -48,9 +48,37 @@ body {
   @apply bg-slate-100 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100;
 }
 
-/* fokuse widoczne z klawiatury — dostępność to temat projektu */
+/* fokuse widoczne z klawiatury — dostępność to temat projektu.
+   outline-style: solid przebija `outline-none` z Tailwind na polach formularza */
 :focus-visible {
   @apply outline-2 outline-offset-2 outline-brand-600;
+  outline-style: solid;
+}
+
+/* wskaźnik na wszystkim interaktywnym — Tailwind v4 nie nadaje go już domyślnie */
+button:not(:disabled),
+select,
+[role='option'],
+a[href],
+label {
+  cursor: pointer;
+}
+
+/* mapa w dark mode: kafelki OSM przyciemniane filtrem, popup/dymek w slate */
+.dark .leaflet-layer img {
+  filter: brightness(0.8) invert(1) hue-rotate(180deg) saturate(0.35);
+}
+.dark .leaflet-popup-content-wrapper {
+  @apply bg-slate-900 text-slate-200;
+}
+.dark .leaflet-popup-tip {
+  @apply bg-slate-900;
+}
+.dark .leaflet-bar a {
+  @apply bg-slate-800 text-slate-200 border-slate-700;
+}
+.dark .leaflet-bar a:hover {
+  @apply bg-slate-700;
 }
 
 /* użytkownicy z preferencją ograniczenia ruchu — zero animacji */
