@@ -45,7 +45,11 @@ function splitNumber(token: string): { street: string[]; number: string } {
 
 /** "ul.Gabriela Narutowicza 2, 33-300 Nowy Sącz" → { city: "nowy sacz", street: [gabriela, narutowicza], number: "2" } */
 export function parseGslAddress(address: string): ParsedAddr {
-  const [streetRaw = '', cityRaw = ''] = address.split(',');
+  // miasto = OSTATNI segment (jak gslCity) — adresy z >1 przecinkiem
+  // („ul. X 1, pok. 2, 30-001 Kraków") brały „pok. 2" jako miasto i nigdy nie trafiały
+  const segs = address.split(',');
+  const cityRaw = segs.length > 1 ? segs[segs.length - 1]! : '';
+  const streetRaw = segs.slice(0, -1).join(',');
   const streetNorm = normText(streetRaw).replace(/^(ul|al|os|pl|rynek|ulica) /, '');
   const cityNorm = normText(cityRaw).replace(/^\d{2} \d{3} /, '');
   const { street, number } = splitNumber(streetNorm);

@@ -60,10 +60,13 @@ export function ReportView() {
         })
         .catch((err: unknown) => {
           if (!alive) return;
-          if (attempt < 5) {
+          const msg = err instanceof Error ? err.message : 'Błąd';
+          // 4xx są trwałe — retry tylko dla błędów sieci i 5xx
+          const permanent = /^HTTP 4\d\d/.test(msg);
+          if (!permanent && attempt < 5) {
             timer = setTimeout(() => load(attempt + 1), 3000);
           } else {
-            setError(err instanceof Error ? err.message : 'Błąd');
+            setError(msg);
             setLoading(false);
           }
         });
@@ -106,18 +109,18 @@ export function ReportView() {
 
       {!loading && report && report.items.length > 0 && (
         <>
-          <div className="mt-5 grid grid-cols-3 gap-3">
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card dark:border-slate-800 dark:bg-slate-900">
+          <div className="mt-5 grid grid-cols-3 gap-2 sm:gap-3">
+            <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-card sm:p-4 dark:border-slate-800 dark:bg-slate-900">
               <p className="text-xs text-slate-500 dark:text-slate-400">Specjalizacje w raporcie</p>
-              <p className="mt-1 text-2xl font-bold tabular-nums text-slate-900 dark:text-white">{report.items.length}</p>
+              <p className="mt-1 text-xl font-bold tabular-nums text-slate-900 sm:text-2xl dark:text-white">{report.items.length}</p>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card dark:border-slate-800 dark:bg-slate-900">
+            <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-card sm:p-4 dark:border-slate-800 dark:bg-slate-900">
               <p className="text-xs text-slate-500 dark:text-slate-400">Placówki w analizie</p>
-              <p className="mt-1 text-2xl font-bold tabular-nums text-slate-900 dark:text-white">{fmtAwaiting(totalFacilities)}</p>
+              <p className="mt-1 text-xl font-bold tabular-nums text-slate-900 sm:text-2xl dark:text-white">{fmtAwaiting(totalFacilities)}</p>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card dark:border-slate-800 dark:bg-slate-900">
+            <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-card sm:p-4 dark:border-slate-800 dark:bg-slate-900">
               <p className="text-xs text-slate-500 dark:text-slate-400">Osób w kolejkach</p>
-              <p className="mt-1 text-2xl font-bold tabular-nums text-slate-900 dark:text-white">{fmtAwaiting(totalAwaiting)}</p>
+              <p className="mt-1 text-xl font-bold tabular-nums text-slate-900 sm:text-2xl dark:text-white">{fmtAwaiting(totalAwaiting)}</p>
             </div>
           </div>
 

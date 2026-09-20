@@ -49,35 +49,55 @@ export function FacilitiesView(props?: {
   const [searchKey, setSearchKey] = useState(
     `${props?.initialCategory ?? 'apteki'}:${props?.province ?? '06'}:${(props?.initialName ?? '').trim().toLowerCase()}`,
   );
+  // parametry faktycznie uruchomionego wyszukiwania — „Pokaż więcej" dokleja
+  // kolejną stronę TEGO zestawu, nie tego, co użytkownik zdążył przepisać w polu
+  const searchedRef = useRef({ cat: props?.initialCategory ?? 'apteki', prov: props?.province ?? '06', nm: (props?.initialName ?? '').trim() });
+  // numer epoki wyszukiwania — spóźniona odpowiedź starszego run()/more()
+  // nie może nadpisać nowszej (szybkie kliki w kategorie/województwo)
+  const epochRef = useRef(0);
   const run = (cat: GslCategoryKey, prov: string, nm: string) => {
+    const epoch = ++epochRef.current;
     setLoading(true);
     setError(null);
     setMoreError(null);
     setSearched(true);
     setSearchKey(`${cat}:${prov}:${nm.trim().toLowerCase()}`);
+    searchedRef.current = { cat, prov, nm: nm.trim() };
     setPage(1);
     fetchFacilities(cat, prov, nm.trim(), 1)
       .then((res) => {
+        if (epochRef.current !== epoch) return;
         setResults(res.results);
         setTotal(res.total);
         setPage(res.page);
       })
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Nieznany błąd'))
-      .finally(() => setLoading(false));
+      .catch((err: unknown) => {
+        if (epochRef.current === epoch) setError(err instanceof Error ? err.message : 'Nieznany błąd');
+      })
+      .finally(() => {
+        if (epochRef.current === epoch) setLoading(false);
+      });
   };
 
   const more = () => {
+    const epoch = epochRef.current; // more() należy do bieżącego wyszukiwania
     const next = page + 1;
+    const s = searchedRef.current;
     setLoadingMore(true);
     setMoreError(null);
-    fetchFacilities(category, province, name.trim(), next)
+    fetchFacilities(s.cat, s.prov, s.nm, next)
       .then((res) => {
+        if (epochRef.current !== epoch) return;
         setResults((prev) => [...prev, ...res.results]);
         setTotal(res.total);
         setPage(res.page);
       })
-      .catch((err: unknown) => setMoreError(err instanceof Error ? err.message : 'Nieznany błąd'))
-      .finally(() => setLoadingMore(false));
+      .catch((err: unknown) => {
+        if (epochRef.current === epoch) setMoreError(err instanceof Error ? err.message : 'Nieznany błąd');
+      })
+      .finally(() => {
+        if (epochRef.current === epoch) setLoadingMore(false);
+      });
   };
 
   const submit = () => run(category, province, name);
@@ -219,7 +239,13 @@ export function FacilitiesView(props?: {
           </div>
           ))}
 
-        <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_minmax(150px,170px)_auto]">
+        <div
+          className={`mt-4 grid grid-cols-1 gap-2 ${
+            props?.lockFilters
+              ? 'sm:grid-cols-[minmax(170px,200px)_auto]'
+              : 'sm:grid-cols-[1fr_minmax(150px,170px)_auto]'
+          }`}
+        >
           {!props?.lockFilters && (
             <input
               value={name}

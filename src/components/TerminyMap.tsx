@@ -192,7 +192,7 @@ export function TerminyMap({
           <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: PIN_COLORS.bad }} />dłużej</span>
           <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: PIN_COLORS.unknown }} />brak danych</span>
         </div>
-        {plotted.length} z {facilities.length} placówek na mapie (max 200)
+        {plotted.length} z {facilities.length} placówek na mapie
         {resolving && ' · geokoduję adresy…'}
         {pending.length > 0 && ` · pozostało ${pending.length} adresów`}
         {' · współrzędne: NFZ + OpenStreetMap (przybliżone)'}

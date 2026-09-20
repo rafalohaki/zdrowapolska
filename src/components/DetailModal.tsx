@@ -7,10 +7,33 @@ import { WaitBadge } from './WaitBadge';
 
 export function DetailModal({ facility, onClose }: { facility: Facility; onClose: () => void }) {
   const closeRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  // onClose przychodzi jako inline-fn z App → trzymamy w ref, żeby efekt
+  // nie odpalał się przy każdym renderze (progresywne ładowanie wymuszało
+  // focus na „Zamknij" co rundę setProvinces)
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') onCloseRef.current();
+      if (e.key === 'Tab' && dialogRef.current) {
+        // focus nie może uciec do tła — dialog modalny
+        const els = dialogRef.current.querySelectorAll<HTMLElement>(
+          'button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        );
+        const focusables = [...els].filter((el) => !el.hasAttribute('disabled'));
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        if (!first || !last) return;
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
     };
     document.addEventListener('keydown', onKey);
     // focus wchodzi do dialogu (a11y), tło nie scrolluje pod otwartym modalem;
@@ -24,7 +47,9 @@ export function DetailModal({ facility, onClose }: { facility: Facility; onClose
       document.body.style.overflow = prevOverflow;
       prevFocus?.focus();
     };
-  }, [onClose]);
+    // tylko przy zmianie placówki — nie przy każdym renderze App
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [facility]);
 
   const flags = A11Y_FILTERS.filter((f) => facility.flags[f.key]);
 
@@ -44,6 +69,7 @@ export function DetailModal({ facility, onClose }: { facility: Facility; onClose
       aria-label={`Szczegóły placówki ${facility.provider}`}
     >
       <div
+        ref={dialogRef}
         className="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-t-2xl bg-white dark:bg-slate-900 p-6 shadow-lift sm:rounded-2xl"
         onClick={(e) => e.stopPropagation()}
       >

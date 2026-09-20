@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { AiResponse, Facility } from '../lib/types';
 import { fetchAdvice } from '../lib/api';
 import { SparklesIcon } from './Icons';
@@ -48,19 +48,45 @@ function RichText({ text }: { text: string }) {
   );
 }
 
-export function AiPanel({ benefit, facilities }: { benefit: string; facilities: Facility[] }) {
+export function AiPanel({
+  benefit,
+  kase,
+  facilities,
+}: {
+  benefit: string;
+  kase: 1 | 2;
+  facilities: Facility[];
+}) {
   const [answer, setAnswer] = useState<AiResponse | null>(null);
   const [question, setQuestion] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // stare rozmowy z poprzedniego świadczenia nie mogą wyglądać jak analiza nowych wyników
+  const lastParams = useRef(`${benefit}|${kase}`);
+  const reqSeq = useRef(0);
+  useEffect(() => {
+    const cur = `${benefit}|${kase}`;
+    if (lastParams.current !== cur) {
+      lastParams.current = cur;
+      setAnswer(null);
+      setError(null);
+    }
+  }, [benefit, kase]);
 
   const ask = (q?: string) => {
     setLoading(true);
     setError(null);
-    fetchAdvice(benefit, facilities.slice(0, 12).map(toCompact), q)
-      .then(setAnswer)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Nieznany błąd'))
-      .finally(() => setLoading(false));
+    const seq = ++reqSeq.current;
+    fetchAdvice(benefit, facilities.slice(0, 12).map(toCompact), q, kase)
+      .then((res) => {
+        if (seq === reqSeq.current) setAnswer(res);
+      })
+      .catch((e: unknown) => {
+        if (seq === reqSeq.current) setError(e instanceof Error ? e.message : 'Nieznany błąd');
+      })
+      .finally(() => {
+        if (seq === reqSeq.current) setLoading(false);
+      });
   };
 
   const disabled = facilities.length === 0 || loading;

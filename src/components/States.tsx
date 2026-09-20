@@ -34,10 +34,10 @@ export function ResultsSkeleton({ count = 5 }: { count?: number }) {
 
 export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
-    <div className="animate-fade-up rounded-2xl border border-rose-200 bg-rose-50 p-6 text-center">
+    <div className="animate-fade-up rounded-2xl border border-rose-200 bg-rose-50 p-6 text-center dark:border-rose-800/60 dark:bg-rose-950/40">
       <AlertIcon className="mx-auto h-8 w-8 text-rose-500" />
-      <h3 className="mt-3 font-semibold text-rose-900">Ups, coś poszło nie tak</h3>
-      <p className="mx-auto mt-1 max-w-md text-sm text-rose-700">{message}</p>
+      <h3 className="mt-3 font-semibold text-rose-900 dark:text-rose-200">Ups, coś poszło nie tak</h3>
+      <p className="mx-auto mt-1 max-w-md text-sm text-rose-700 dark:text-rose-300">{message}</p>
       {onRetry && (
         <button
           type="button"

@@ -75,7 +75,9 @@ export function CompareChart({
                 type="button"
                 onClick={() => onSelect(isSel ? null : s.code)}
                 className={`group flex w-full items-center gap-3 rounded-lg px-2 py-1 text-left transition ${
-                  isSel ? 'bg-brand-50' : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 dark:bg-slate-800/50'
+                  isSel
+                    ? 'bg-brand-50 dark:bg-brand-900/30'
+                    : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 dark:bg-slate-800/50'
                 }`}
                 title={`Filtruj: ${s.name}`}
               >

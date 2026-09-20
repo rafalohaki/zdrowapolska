@@ -1,4 +1,4 @@
-import type { AiResponse, CompareResponse, GslResult, ProvinceData } from './types';
+import type { AiResponse, GslResult, ProvinceData } from './types';
 
 export async function fetchFacilities(
   category: string,
@@ -83,23 +83,6 @@ export async function fetchLocalities(name: string, signal?: AbortSignal): Promi
   return json.items ?? [];
 }
 
-export async function fetchCompare(
-  benefit: string,
-  kase: 1 | 2,
-  pages = 2,
-  locality = '',
-  signal?: AbortSignal,
-): Promise<CompareResponse> {
-  const params = new URLSearchParams({ benefit, case: String(kase), pages: String(pages) });
-  if (locality) params.set('locality', locality);
-  const res = await fetch(`${API_BASE}/api/compare?${params}`, { signal });
-  if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as { error?: string } | null;
-    throw new Error(body?.error ?? `NFZ: HTTP ${res.status}`);
-  }
-  return (await res.json()) as CompareResponse;
-}
-
 export type TrendResponse = {
   points: { day: string; total: number; records: number }[];
   from: string | null;
@@ -126,11 +109,17 @@ export async function fetchAdvice(
   benefit: string,
   results: unknown,
   question?: string,
+  kase?: 1 | 2,
 ): Promise<AiResponse> {
   const res = await fetch(`${API_BASE}/api/ai`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ benefit, results, question: question?.trim() || undefined }),
+    body: JSON.stringify({
+      benefit,
+      results,
+      question: question?.trim() || undefined,
+      kase,
+    }),
   });
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { error?: string } | null;

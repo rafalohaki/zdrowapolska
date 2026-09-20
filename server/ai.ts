@@ -27,6 +27,8 @@ export type AiRequest = {
   benefit: string;
   question?: string;
   results: CompactRecord[];
+  /** 1 = zwykła kolejka, 2 = przypadek pilny — SYSTEM_PROMPT ma osobną regułę */
+  kase?: 1 | 2;
 };
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
@@ -75,10 +77,14 @@ function userPrompt(req: AiRequest): string {
     })
     .join('\n');
   const base = `Świadczenie: "${req.benefit}". Lista placówek (posortowana wg czasu oczekiwania):\n\n${list}`;
+  const urgent =
+    req.kase === 2
+      ? '\n\nUWAGA: to jest PRZYPADEK PILNY (case=2) — zastosuj regułę z instrukcji systemowej.'
+      : '';
   if (req.question?.trim()) {
-    return `${base}\n\nPytanie pacjenta: "${req.question.trim()}"\nOdpowiedz na pytanie, opierając się na liście.`;
+    return `${base}${urgent}\n\nPytanie pacjenta: "${req.question.trim()}"\nOdpowiedz na pytanie, opierając się na liście.`;
   }
-  return `${base}\n\nZaproponuj najlepszą placówkę (i jedną alternatywę), krótko uzasadniając.`;
+  return `${base}${urgent}\n\nZaproponuj najlepszą placówkę (i jedną alternatywę), krótko uzasadniając.`;
 }
 
 async function callProvider(
@@ -137,6 +143,9 @@ export function localAdvice(req: AiRequest): string {
     best.phone ? `**Telefon:** ${best.phone} — warto potwierdzić dostępność przed wizytą.` : null,
     flags ? `**Udogodnienia:** ${flags}.` : null,
     req.question?.trim() ? `Pytanie: "${req.question.trim()}" — na podstawie danych NFZ najlepiej wypada powyższa placówka.` : null,
+    req.kase === 2
+      ? 'Przypadek jest pilny — przy nagłym pogorszeniu zdrowia udaj się na SOR lub zadzwoń na 112/999.'
+      : null,
     'Ostateczny wybór placówki warto skonsultować z lekarzem POZ.',
   ];
   return lines.filter(Boolean).join('\n');

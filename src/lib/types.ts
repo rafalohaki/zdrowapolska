@@ -15,13 +15,6 @@ export type ProvinceData = {
   records: NfzRecord[];
 };
 
-export type CompareResponse = {
-  benefit: string;
-  case: 1 | 2;
-  provinces: ProvinceData[];
-  errors: { code: string; message: string }[];
-};
-
 /** Parsed placówka gotowa do wyświetlenia. */
 export type Facility = {
   id: string;
