@@ -134,6 +134,11 @@ export function MentalHealthView({ onCheckQueues }: { onCheckQueues: (benefit: s
           <p className="mt-3 rounded-2xl border border-red-300 bg-red-50 p-4 text-sm leading-relaxed text-red-800 shadow-card dark:border-red-800 dark:bg-red-950/50 dark:text-red-200">
             Nie musisz układać zdań — wystarczy powiedzieć „jest mi bardzo źle". Połączenie trwa
             kilka minut i nic nie kosztuje. Jeśli boisz się dzwonić, poproś kogoś, by był obok.
+            <span className="mt-2 block font-semibold">
+              <a href="tel:116123" className="underline underline-offset-2">116 123</a> dla dorosłych ·{' '}
+              <a href="tel:116111" className="underline underline-offset-2">116 111</a> dla dzieci i
+              młodzieży · zagrożenie życia: <a href="tel:112" className="underline underline-offset-2">112</a>
+            </span>
           </p>
         )}
         </div>
@@ -199,6 +204,7 @@ export function MentalHealthView({ onCheckQueues }: { onCheckQueues: (benefit: s
           initialCategory={preset.category}
           initialName={preset.name}
           lockFilters
+          degradeError
           title={preset.label}
           subtitle={preset.hint}
           queueBenefit={preset.queueBenefit}

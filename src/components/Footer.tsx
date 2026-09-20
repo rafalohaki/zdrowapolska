@@ -31,21 +31,37 @@ function ThemeToggle() {
 
 function InstallButton() {
   const [ready, setReady] = useState(() => getInstallPrompt() !== null);
+  const [showIosHint, setShowIosHint] = useState(false);
   useEffect(() => onInstallPrompt(() => setReady(getInstallPrompt() !== null)), []);
-  if (!ready || isStandalone()) return null;
+  if (isStandalone()) return null;
+  // iOS Safari nie emituje beforeinstallprompt — instalacja tylko ręcznie
+  // przez „Udostępnij → Dodaj do ekranu początkowego"; pokaż podpowiedź
+  const ios = /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase());
+  if (!ready && !ios) return null;
   return (
-    <button
-      type="button"
-      onClick={async () => {
-        const p = getInstallPrompt();
-        if (!p) return;
-        await p.prompt();
-        setReady(false);
-      }}
-      className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-700"
-    >
-      Zainstaluj
-    </button>
+    <span className="relative">
+      <button
+        type="button"
+        onClick={async () => {
+          const p = getInstallPrompt();
+          if (!p) {
+            setShowIosHint((v) => !v);
+            return;
+          }
+          await p.prompt();
+          setReady(false);
+        }}
+        className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-700"
+      >
+        Zainstaluj
+      </button>
+      {showIosHint && (
+        <span className="absolute right-0 top-full z-50 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-3 text-left text-xs leading-relaxed text-slate-600 shadow-card dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+          Na iPhonie: otwórz <strong>Udostępnij</strong> (ikona kwadratu ze strzałką) i wybierz
+          <strong> „Dodaj do ekranu początkowego"</strong>.
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -159,58 +175,29 @@ export function Header({
           </span>
         </button>
         <nav className="flex items-center gap-4 text-sm font-medium text-slate-600 dark:text-slate-300">
-          <button
-            type="button"
-            id="nav-terminy" onClick={() => onMode('terminy')}
-            className={`hidden transition md:block ${
-              mode === 'terminy' ? 'text-brand-700 dark:text-brand-400' : 'hover:text-brand-700 dark:hover:text-brand-400'
-            }`}
-          >
-            Terminy leczenia
-          </button>
-          <button
-            type="button"
-            id="nav-raport" onClick={() => onMode('raport')}
-            className={`hidden transition md:block ${
-              mode === 'raport' ? 'text-brand-700 dark:text-brand-400' : 'hover:text-brand-700 dark:hover:text-brand-400'
-            }`}
-          >
-            Raport PL
-          </button>
-          <button
-            type="button"
-            id="nav-wsparcie" onClick={() => onMode('wsparcie')}
-            className={`hidden transition md:block ${
-              mode === 'wsparcie' ? 'text-brand-700 dark:text-brand-400' : 'hover:text-brand-700 dark:hover:text-brand-400'
-            }`}
-          >
-            Wsparcie psychiczne
-          </button>
-          <button
-            type="button"
-            onClick={() => onMode('powietrze')}
-            className={`hidden transition md:block ${
-              mode === 'powietrze' ? 'text-brand-700 dark:text-brand-400' : 'hover:text-brand-700 dark:hover:text-brand-400'
-            }`}
-          >
-            Jakość powietrza
-          </button>
-          <button
-            type="button"
-            id="nav-placowki" onClick={() => onMode('placowki')}
-            className={`hidden transition md:block ${
-              mode === 'placowki' ? 'text-brand-700 dark:text-brand-400' : 'hover:text-brand-700 dark:hover:text-brand-400'
-            }`}
-          >
-            Placówki NFZ
-          </button>
+          {MODES.map((m) => (
+            <button
+              key={m.key}
+              type="button"
+              id={`nav-${m.key}`}
+              onClick={() => onMode(m.key)}
+              aria-current={mode === m.key ? 'page' : undefined}
+              className={`hidden transition md:block ${
+                mode === m.key
+                  ? 'font-semibold text-brand-700 dark:text-brand-400'
+                  : 'hover:text-brand-700 dark:hover:text-brand-400'
+              }`}
+            >
+              {m.label}
+            </button>
+          ))}
           <a
             href="https://dane.gov.pl"
             target="_blank"
             rel="noreferrer"
             className="hidden transition hover:text-brand-700 dark:hover:text-brand-400 md:block"
           >
-            Dane otwarte
+            Dane otwarte ↗
           </a>
           <InstallButton />
           <ThemeToggle />
@@ -252,7 +239,7 @@ export function AboutSection() {
       <h2 className="text-center text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Jak to działa?</h2>
       <div className="mt-8 grid gap-4 sm:grid-cols-3">
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card dark:border-slate-800 dark:bg-slate-900">
-          <span className="text-2xl">🏛️</span>
+          <span className="text-2xl" role="img" aria-label="urząd">🏛️</span>
           <h3 className="mt-3 font-semibold text-slate-900 dark:text-white">Oficjalne dane NFZ</h3>
           <p className="mt-2 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
             Korzystamy z publicznego API NFZ „Terminy Leczenia": liczba osób w kolejce, średni czas
@@ -260,7 +247,7 @@ export function AboutSection() {
           </p>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card dark:border-slate-800 dark:bg-slate-900">
-          <span className="text-2xl">⚖️</span>
+          <span className="text-2xl" role="img" aria-label="waga">⚖️</span>
           <h3 className="mt-3 font-semibold text-slate-900 dark:text-white">Porównanie, nie rezerwacja</h3>
           <p className="mt-2 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
             NFZ publikuje statystyki kolejek (aktualizowane miesięcznie), a nie wolne sloty. Dlatego
@@ -268,7 +255,7 @@ export function AboutSection() {
           </p>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card dark:border-slate-800 dark:bg-slate-900">
-          <span className="text-2xl">♿</span>
+          <span className="text-2xl" role="img" aria-label="dostępność">♿</span>
           <h3 className="mt-3 font-semibold text-slate-900 dark:text-white">Dostępność i AI</h3>
           <p className="mt-2 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
             Filtrujesz placówki po rampie, windzie, toalecie dostosowanej i dojeździe komunikacją, a

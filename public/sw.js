@@ -5,7 +5,7 @@
  * - /assets/* (Vite, hashowane = immutable) i ikony/manifest: cache-first
  * Zmień CACHE przy zmianach logiki — activate czyści stare wersje.
  */
-const CACHE = 'zp-v1';
+const CACHE = 'zp-v2';
 const PRECACHE = ['/', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', (e) => {

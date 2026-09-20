@@ -131,6 +131,9 @@ export type ProvinceData = {
   name: string;
   total: number;
   records: NfzRecord[];
+  /** 'db' świeży snapshot, 'stale' przeterminowany (awaria NFZ), 'nfz' żywe */
+  source?: 'db' | 'stale' | 'nfz';
+  fetchedAt?: string;
 };
 
 export type CompareResponse = {
@@ -138,13 +141,19 @@ export type CompareResponse = {
   case: 1 | 2;
   provinces: ProvinceData[];
   errors: { code: string; message: string }[];
+  /** true = odpowiedź złożona z przeterminowanych snapshotów (NFZ nie odpowiada) */
+  stale?: boolean;
 };
 
-export async function getBenefits(name: string): Promise<{ items: string[]; count: number }> {
+export async function getBenefits(
+  name: string,
+  page = 1,
+): Promise<{ items: string[]; count: number }> {
   const json = await fetchJson<{ data: string[]; meta: { count: number } }>('/benefits', {
     name,
     limit: '25',
     format: 'json',
+    page: String(page),
   });
   return { items: json.data ?? [], count: json.meta?.count ?? json.data?.length ?? 0 };
 }

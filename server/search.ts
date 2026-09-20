@@ -135,6 +135,14 @@ export async function reindexBenefits(names: string[]): Promise<void> {
     });
     await waitForTask(settings.taskUid);
 
+    // upsert po primaryKey nie usuwa wycofanych świadczeń — czyść indeks przed
+    // ładowaniem (DELETE /documents = deleteAll; pusty indeks krótko to OK,
+    // bo searchBenefits i tak pada wtedy na fallback SQLite)
+    if (names.length > 0) {
+      const del = await meili<{ taskUid: number }>('DELETE', `/indexes/${INDEX}/documents`);
+      await waitForTask(del.taskUid);
+    }
+
     for (let i = 0; i < names.length; i += 500) {
       const batch = names.slice(i, i + 500).map((name) => ({ id: slugId(name), name }));
       const doc = await meili<{ taskUid: number }>('POST', `/indexes/${INDEX}/documents`, batch);

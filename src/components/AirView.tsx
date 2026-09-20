@@ -53,8 +53,8 @@ function SourceRows({ community, airly }: { community: CommunityAir | null; airl
           <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${katDot(community.kategoria)}`} />
           <span className="font-medium">Czujniki obywatelskie (Sensor.Community)</span>
           <span className="text-slate-500 dark:text-slate-400">
-            — PM2.5: <strong>{community.pm25 ?? 'bd'}</strong> µg/m³, PM10:{' '}
-            <strong>{community.pm10 ?? 'bd'}</strong> µg/m³ · {community.count} czujników w 12 km
+            — PM2.5: <strong>{community.pm25 ?? '—'}</strong> µg/m³, PM10:{' '}
+            <strong>{community.pm10 ?? '—'}</strong> µg/m³ · {community.count} czujników w 12 km
             {community.nearestKm > 0 && ` (najbliższy ~${community.nearestKm} km)`}
           </span>
         </li>
@@ -64,8 +64,8 @@ function SourceRows({ community, airly }: { community: CommunityAir | null; airl
           <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${katDot(airly.kategoria)}`} />
           <span className="font-medium">Airly (m.in. czujniki na paczkomatach)</span>
           <span className="text-slate-500 dark:text-slate-400">
-            — PM2.5: <strong>{airly.pm25 ?? 'bd'}</strong> µg/m³, PM10:{' '}
-            <strong>{airly.pm10 ?? 'bd'}</strong> µg/m³
+            — PM2.5: <strong>{airly.pm25 ?? '—'}</strong> µg/m³, PM10:{' '}
+            <strong>{airly.pm10 ?? '—'}</strong> µg/m³
             {airly.caqi !== null && ` · CAQI ${Math.round(airly.caqi)}`}
           </span>
         </li>
@@ -333,7 +333,7 @@ export function AirView() {
                 {data.kategoria}
               </span>
               <span className="text-sm text-slate-500 dark:text-slate-400">
-                indeks GIOŚ: {data.wartosc ?? 'bd'} · obliczono:{' '}
+                indeks GIOŚ: {data.wartosc ?? '—'} · obliczono:{' '}
                 {data.dataObliczen?.slice(0, 16).replace('T', ' ')}
               </span>
             </div>

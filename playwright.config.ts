@@ -1,6 +1,8 @@
 import { defineConfig } from '@playwright/test';
 
-const CHROME = '/root/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome';
+// playwright szuka własnego chroma w ~/.cache/ms-playwright; na serwerze gdzie
+// binarka ma niestandardową ścieżkę, nadpisz przez PLAYWRIGHT_CHROME_PATH
+const CHROME = process.env.PLAYWRIGHT_CHROME_PATH;
 
 export default defineConfig({
   testDir: './e2e',
@@ -8,7 +10,7 @@ export default defineConfig({
   retries: 0,
   use: {
     baseURL: 'http://localhost:5179',
-    launchOptions: { executablePath: CHROME },
+    launchOptions: CHROME ? { executablePath: CHROME } : {},
   },
   webServer: {
     command: 'bunx vite preview --port 5179 --strictPort',

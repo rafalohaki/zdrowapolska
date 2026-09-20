@@ -13,6 +13,10 @@ export type ProvinceData = {
   name: string;
   total: number;
   records: NfzRecord[];
+  /** 'db' = świeży snapshot, 'stale' = przeterminowany (awaria NFZ), 'nfz' = żywe */
+  source?: 'db' | 'stale' | 'nfz';
+  /** przy source==='stale' — moment pobrania danych */
+  fetchedAt?: string;
 };
 
 /** Parsed placówka gotowa do wyświetlenia. */
@@ -66,6 +70,9 @@ export type GslResult = {
   total: number;
   results: GslFacility[];
   page: number;
+  /** true = ostatnia znana lista z bazy (GSL NFZ nie odpowiada) */
+  stale?: boolean;
+  fetchedAt?: string;
 };
 
 export const GSL_CATEGORY_GROUPS = [

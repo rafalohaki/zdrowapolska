@@ -57,6 +57,18 @@ db.exec(`
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
   );
+  -- ostatnie udane strony z serwisu „Gdzie się leczyć" — przy awarii GSL
+  -- (timeout/502) serwujemy je z flagą stale zamiast pustego błędu
+  CREATE TABLE IF NOT EXISTS gsl_snapshots (
+    category  TEXT NOT NULL,
+    province  TEXT NOT NULL,
+    name      TEXT NOT NULL DEFAULT '',
+    page      INTEGER NOT NULL,
+    fetched_at TEXT NOT NULL,
+    total     INTEGER NOT NULL,
+    json      TEXT NOT NULL,
+    PRIMARY KEY (category, province, name, page)
+  );
 `);
 
 const now = () => new Date().toISOString();
@@ -193,6 +205,58 @@ export function getSnapshotOne(
     | undefined;
   if (!row) return null;
   return { total: row.total, records: JSON.parse(row.json), fetchedAt: row.fetched_at };
+}
+
+/** Miejscowości ze snapshotów kolejek — fallback autouzupełniania przy padniętym NFZ. */
+export function likeLocalities(pattern: string, limit: number): string[] {
+  const esc = pattern.replace(/[\\%_]/g, (c) => `\\${c}`);
+  return (
+    db
+      .query(
+        `SELECT DISTINCT json_extract(r.value, '$.attributes.locality') AS loc
+         FROM queue_snapshots s, json_each(s.json) r
+         WHERE loc LIKE ? ESCAPE '\\'
+         ORDER BY loc LIMIT ?`,
+      )
+      .all(`${esc}%`, limit) as { loc: string | null }[]
+  )
+    .map((r) => r.loc)
+    .filter((x): x is string => Boolean(x));
+}
+
+export type GslSnapshot = { total: number; results: unknown[]; fetchedAt: string };
+
+export function saveGslSnapshot(
+  category: string,
+  province: string,
+  name: string,
+  page: number,
+  total: number,
+  results: unknown[],
+): void {
+  db.query(
+    `INSERT INTO gsl_snapshots (category, province, name, page, fetched_at, total, json)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(category, province, name, page)
+     DO UPDATE SET fetched_at = excluded.fetched_at, total = excluded.total, json = excluded.json`,
+  ).run(category, province, name, page, now(), total, JSON.stringify(results));
+}
+
+export function getGslSnapshot(
+  category: string,
+  province: string,
+  name: string,
+  page: number,
+): GslSnapshot | null {
+  const row = db
+    .query(
+      'SELECT total, json, fetched_at FROM gsl_snapshots WHERE category = ? AND province = ? AND name = ? AND page = ?',
+    )
+    .get(category, province, name, page) as
+    | { total: number; json: string; fetched_at: string }
+    | undefined;
+  if (!row) return null;
+  return { total: row.total, results: JSON.parse(row.json), fetchedAt: row.fetched_at };
 }
 
 export function trackedBenefits(): string[] {

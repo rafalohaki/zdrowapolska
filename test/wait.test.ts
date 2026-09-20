@@ -37,7 +37,7 @@ describe('formaty', () => {
     expect(formatDaysShort(1)).toBe('1 dzień');
     expect(formatDaysShort(45)).toBe('45 dni');
     expect(formatDaysShort(92)).toBe('~3 mies.');
-    expect(formatDaysShort(null)).toBe('bd');
+    expect(formatDaysShort(null)).toBe('—');
   });
   test('formatDaysLong', () => {
     expect(formatDaysLong(0)).toBe('natychmiast (0 dni)');
@@ -49,7 +49,7 @@ describe('formaty', () => {
     expect(formatAwaiting(3)).toBe('3 osoby');
     expect(formatAwaiting(12)).toBe('12 osób');
     expect(formatAwaiting(23)).toBe('23 osoby');
-    expect(formatAwaiting(null)).toBe('bd');
+    expect(formatAwaiting(null)).toBe('brak danych');
   });
   test('waitLevel progi', () => {
     expect(waitLevel(0)).toBe('great');

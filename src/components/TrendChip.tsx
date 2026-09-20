@@ -59,14 +59,18 @@ export function TrendChip({
         />
       </svg>
       {hasDelta ? (
-        <span>
-          kolejka {up ? 'rośnie' : 'maleje'}{' '}
-          <strong className={up ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}>
-            {up ? '+' : ''}
-            {trend!.deltaPct}%
-          </strong>{' '}
-          od {trend!.from}
-        </span>
+        trend!.deltaTotal === 0 ? (
+          <span>kolejka stabilna od {trend!.from}</span>
+        ) : (
+          <span>
+            kolejka {up ? 'rośnie' : 'maleje'}{' '}
+            <strong className={up ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}>
+              {up ? '+' : ''}
+              {trend!.deltaPct}%
+            </strong>{' '}
+            od {trend!.from}
+          </span>
+        )
       ) : (
         <span>trend: pierwszy pomiar — historia narasta z każdą synchronizacją</span>
       )}

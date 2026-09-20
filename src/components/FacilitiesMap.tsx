@@ -112,6 +112,16 @@ export function FacilitiesMap({
         maxZoom: 18,
       }).addTo(map);
       layerRef.current = L.layerGroup().addTo(map);
+      // Leaflet nadaje zoomom angielskie title/aria-label — polska aplikacja
+      for (const el of map.getContainer().querySelectorAll<HTMLElement>('.leaflet-bar a')) {
+        if (el.classList.contains('leaflet-control-zoom-in')) {
+          el.title = 'Przybliż';
+          el.setAttribute('aria-label', 'Przybliż');
+        } else if (el.classList.contains('leaflet-control-zoom-out')) {
+          el.title = 'Oddal';
+          el.setAttribute('aria-label', 'Oddal');
+        }
+      }
       map.on('movestart zoomstart', () => {
         if (!programmaticRef.current) userMovedRef.current = true;
       });

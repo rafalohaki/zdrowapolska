@@ -2,7 +2,10 @@ import { A11Y_FILTERS, type Facility } from './types';
 
 // PL Excel rozumie UTF-8 dopiero z BOM i domyślnie rozdziela pola średnikiem
 const esc = (v: string | number | null | undefined): string => {
-  const s = v === null || v === undefined ? '' : String(v);
+  let s = v === null || v === undefined ? '' : String(v);
+  // neutralizacja formuł: komórka od [=+\-@] (np. telefon „+48 22…") Excel
+  // traktuje jako formułę → #NAME? i podatność formula-injection na danych NFZ
+  if (/^[=+\-@]/.test(s)) s = `'${s}`;
   return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 

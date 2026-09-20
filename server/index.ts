@@ -27,6 +27,8 @@ import {
 import { searchBenefits, reindexBenefits } from './search';
 import { getSyncStatus, startSyncScheduler, triggerSync } from './sync';
 import { GSL_CATEGORIES, gslFacilities, type GslCategory } from './gsl';
+import { getGslSnapshot, likeLocalities, saveGslSnapshot } from './db';
+import { getConnInfo } from 'hono/bun';
 
 const app = new Hono();
 
@@ -107,13 +109,20 @@ const rlSweep = setInterval(() => {
 }, 60_000);
 rlSweep.unref?.();
 
+// Nagłówki proxy (cf-connecting-ip itd.) honorujemy tylko gdy backend stoi za
+// zaufanym proxy (TRUST_PROXY=1 w compose — tam request przychodzi od cloudflared).
+// Bez tego bezpośrednie żądanie do :2363 mogłoby spoofować X-Forwarded-For
+// i rotować „IP" w rate limiterze.
+const TRUST_PROXY = process.env.TRUST_PROXY === '1';
 function clientIp(c: Context): string {
-  return (
-    c.req.header('cf-connecting-ip') ??
-    c.req.header('x-real-ip') ??
-    c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ??
-    'anon'
-  );
+  if (TRUST_PROXY) {
+    const fwd =
+      c.req.header('cf-connecting-ip') ??
+      c.req.header('x-real-ip') ??
+      c.req.header('x-forwarded-for')?.split(',')[0]?.trim();
+    if (fwd) return fwd;
+  }
+  return getConnInfo(c).remote.address ?? 'anon';
 }
 
 function limit(perMinute: number) {
@@ -131,12 +140,24 @@ function limit(perMinute: number) {
   };
 }
 
+// --- Circuit breaker na upstream NFZ ------------------------------------------
+// Błąd sieciowy/429/5xx z NFZ zamyka obwód na ~45 s: zapytania idą wtedy od razu
+// do przeterminowanych snapshotów zamiast młócić retry × 16 województw przy
+// każdym wyszukiwaniu (semafor NFZ + retryTransient by seryjnie wymusił ~minutę
+// czekania na ścianę błędu). 4xx (np. nieznana nazwa świadczenia) nie jest awarią.
+let nfzDownUntil = 0;
+const nfzDown = () => Date.now() < nfzDownUntil;
+function noteNfzError(err: unknown): void {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (/niedostępny|limit zapytań|NFZ 5/.test(msg)) nfzDownUntil = Date.now() + 45_000;
+}
+
 app.get('/api/health', (c) =>
   c.json({ ok: true, service: 'zdrowapolska-backend', cache: cacheStats(), db: dbStats() }),
 );
 
 // Wyszukiwarka świadczeń (Meilisearch z synonimami i literówkami; fallbacki: SQLite → NFZ)
-app.get('/api/search', async (c) => {
+app.get('/api/search', limit(30), async (c) => {
   const q = cut((c.req.query('q') ?? c.req.query('name') ?? '').trim(), 80);
   const limit = intParam(c.req.query('limit'), 25, 1, 25);
   if (q.length < 3) return c.json({ items: [], count: 0, source: 'meilisearch' });
@@ -147,7 +168,7 @@ app.get('/api/search', async (c) => {
 });
 
 // Kompatybilność ze starym kształtem (słownik po fragmencie)
-app.get('/api/benefits', async (c) => {
+app.get('/api/benefits', limit(30), async (c) => {
   const name = cut((c.req.query('name') ?? '').trim(), 80);
   if (name.length < 3) return c.json({ items: [], count: 0 });
   const res = await cached(`search:${name.toLowerCase()}:25`, TTL.dictionaries, () =>
@@ -224,14 +245,23 @@ async function assemblePartialFromDb(
   };
 }
 
-// Autouzupełnianie miejscowości (jak „Gdzie się leczyć" NFZ)
-app.get('/api/localities', async (c) => {
+// Autouzupełnianie miejscowości (jak „Gdzie się leczyć" NFZ).
+// Przy awarii NFZ (albo zamkniętym obwodzie) podpowiadamy z lokalnych snapshotów
+// — nazwy placówek/miejscowości zapisane przy kolejkach, bez dotykania upstreamu.
+app.get('/api/localities', limit(30), async (c) => {
   const name = cut((c.req.query('name') ?? '').trim(), 60);
   if (name.length < 3) return c.json({ items: [] });
-  const items = await cached(`localities:${name.toLowerCase()}`, TTL.dictionaries, () =>
-    getLocalities(name),
-  );
-  return c.json({ items });
+  if (!nfzDown()) {
+    try {
+      const items = await cached(`localities:${name.toLowerCase()}`, TTL.dictionaries, () =>
+        getLocalities(name),
+      );
+      return c.json({ items });
+    } catch (err) {
+      noteNfzError(err);
+    }
+  }
+  return c.json({ items: likeLocalities(name, 15), source: 'db' });
 });
 
 // Porównanie 16 województw: najpierw świeży snapshot z SQLite (natychmiast),
@@ -266,17 +296,42 @@ app.get('/api/compare', limit(12), async (c) => {
     );
   }
 
-  const data = await cached(`compare:${benefit}:${kase}:${pages}:${locality}`, TTL.queues, () =>
-    getCompare(benefit, kase, pages, locality),
-  );
-  // snapshot per województwo — następne zapytania lecą z bazy.
-  // Województwa z błędem (429/sieć) pomijamy: pusty snapshot z 0 rekordów przetrwałby
-  // w cache 24 h jako "świeży" i zamrażał dziurę w wynikach.
-  const failed = new Set(data.errors.map((e) => e.code));
-  for (const p of data.provinces) {
-    if (!failed.has(p.code)) saveSnapshot(benefit, p.code, kase, p.total, p.records, locality);
+  // obwód zamknięty → mamy jakiekolwiek snapshoty → serwuj je (stare, ale dane)
+  if (saved > 0 && nfzDown()) {
+    return c.json({
+      ...assembleFromDb(benefit, kase, getSnapshots(benefit, kase, locality)),
+      stale: true,
+    });
   }
-  return c.json(data);
+
+  try {
+    const data = await cached(
+      `compare:${benefit}:${kase}:${pages}:${locality}`,
+      TTL.queues,
+      () => getCompare(benefit, kase, pages, locality),
+      // żywa ścieżka też nie może mrozić odpowiedzi z błędami — padłe
+      // województwa zostają dociągnięte przez następne zapytanie
+      (d) => d.errors.length === 0,
+    );
+    // snapshot per województwo — następne zapytania lecą z bazy.
+    // Województwa z błędem (429/sieć) pomijamy: pusty snapshot z 0 rekordów przetrwałby
+    // w cache 24 h jako "świeży" i zamrażał dziurę w wynikach.
+    const failed = new Set(data.errors.map((e) => e.code));
+    for (const p of data.provinces) {
+      if (!failed.has(p.code)) saveSnapshot(benefit, p.code, kase, p.total, p.records, locality);
+    }
+    return c.json(data);
+  } catch (err) {
+    noteNfzError(err);
+    // awaria NFZ, a snapshoty są (choć stare) → lepsze to niż ściana błędu
+    if (saved > 0) {
+      return c.json({
+        ...assembleFromDb(benefit, kase, getSnapshots(benefit, kase, locality)),
+        stale: true,
+      });
+    }
+    throw err;
+  }
 });
 
 // Pojedyncze województwo: baza (jeśli świeże) → NFZ. Do ładowania progresywnego.
@@ -293,8 +348,8 @@ app.get('/api/queues-province', limit(90), async (c) => {
 
   const ttlH = Number(process.env.SNAPSHOT_TTL_H ?? 24);
   const snap = getSnapshotOne(benefit, province, kase, locality);
+  const p = PROVINCES.find((x) => x.code === province)!;
   if (snap && (Date.now() - new Date(snap.fetchedAt).getTime()) / 3_600_000 <= ttlH) {
-    const p = PROVINCES.find((x) => x.code === province)!;
     return c.json({
       code: p.code,
       name: p.name,
@@ -304,13 +359,38 @@ app.get('/api/queues-province', limit(90), async (c) => {
     });
   }
 
-  const data = await cached(
-    `province:${benefit}:${province}:${kase}:${pages}:${locality}`,
-    TTL.queues,
-    () => getProvinceQueues(benefit, province, kase, pages, locality),
-  );
-  saveSnapshot(benefit, province, kase, data.total, data.records, locality);
-  return c.json({ ...data, source: 'nfz' });
+  const stale = () =>
+    snap
+      ? {
+          code: p.code,
+          name: p.name,
+          total: snap.total,
+          records: snap.records as NfzRecord[],
+          source: 'stale' as const,
+          fetchedAt: snap.fetchedAt,
+        }
+      : null;
+
+  // awaria NFZ: bez dotykania upstreamu serwuj przeterminowany snapshot
+  if (nfzDown()) {
+    const s = stale();
+    if (s) return c.json(s);
+  }
+
+  try {
+    const data = await cached(
+      `province:${benefit}:${province}:${kase}:${pages}:${locality}`,
+      TTL.queues,
+      () => getProvinceQueues(benefit, province, kase, pages, locality),
+    );
+    saveSnapshot(benefit, province, kase, data.total, data.records, locality);
+    return c.json({ ...data, source: 'nfz' });
+  } catch (err) {
+    noteNfzError(err);
+    const s = stale();
+    if (s) return c.json(s);
+    throw err;
+  }
 });
 
 // Placówki NFZ z „Gdzie się leczyć": apteki, SOR, izby przyjęć, nocna pomoc
@@ -329,14 +409,29 @@ app.get('/api/facilities', limit(30), async (c) => {
   if (!PROVINCES.some((p) => p.code === province)) {
     return c.json({ error: 'Podaj poprawny kod województwa' }, 400);
   }
+  const nameKey = name.toLowerCase();
   try {
     const data = await cached(
-      `gsl:${category}:${province}:${name.toLowerCase()}:${page}`,
+      `gsl:${category}:${province}:${nameKey}:${page}`,
       60 * 60 * 1000,
       () => gslFacilities(category, province, name, page),
     );
+    // ostatnia dobra strona ląduje w SQLite — przy awarii GSL serwujemy ją jako stale
+    saveGslSnapshot(category, province, nameKey, data.page ?? page, data.total, data.results);
     return c.json(data);
   } catch (err) {
+    const snap = getGslSnapshot(category, province, nameKey, page);
+    if (snap) {
+      return c.json({
+        category,
+        province,
+        total: snap.total,
+        results: snap.results,
+        page,
+        stale: true,
+        fetchedAt: snap.fetchedAt,
+      });
+    }
     // Błąd upstream GSL NFZ (sesja/paginacja/Imperva) — 502, nie 500: problem leży
     // po stronie NFZ, nie w naszym kodzie. Frontend pokazuje retry bez kasowania listy.
     console.error('[facilities]', category, province, page, err);
@@ -346,7 +441,7 @@ app.get('/api/facilities', limit(30), async (c) => {
 
 
 // Autouzupełnianie miast dla widoku powietrza (z cache stacji, bez NFZ/GIOŚ w locie)
-app.get('/api/air-stations', async (c) => {
+app.get('/api/air-stations', limit(20), async (c) => {
   const locality = cut((c.req.query('locality') ?? '').trim(), 60);
   if (locality.length < 3) return c.json({ items: [] });
   const { airStationsByLocality } = await import('./air');
@@ -357,7 +452,7 @@ app.get('/api/air-stations', async (c) => {
 });
 
 // Jakość powietrza GIOŚ — „czy dziś bezpieczny trening?"
-app.get('/api/air', async (c) => {
+app.get('/api/air', limit(20), async (c) => {
   const locality = cut((c.req.query('locality') ?? '').trim(), 60);
   const stationRaw = c.req.query('station');
   const stationId = stationRaw ? Number(stationRaw) : 0;
