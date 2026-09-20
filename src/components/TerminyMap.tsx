@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { geocodeBatch } from '../lib/api';
-import { formatDaysShort, waitLevel } from '../lib/wait';
+import { formatDaysShort, plural, waitLevel } from '../lib/wait';
 import { escapeHtml, telHref } from '../lib/html';
 import type { Facility } from '../lib/types';
 import type * as LType from 'leaflet';
@@ -204,9 +204,9 @@ export function TerminyMap({
           <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: PIN_COLORS.bad }} />dłużej</span>
           <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: PIN_COLORS.unknown }} />brak danych</span>
         </div>
-        {plotted.length} z {facilities.length} placówek na mapie
+        {plotted.length} z {facilities.length} {plural(facilities.length, 'placówki', 'placówek', 'placówek')} na mapie
         {resolving && ' · geokoduję adresy…'}
-        {pending.length > 0 && ` · pozostało ${pending.length} adresów`}
+        {pending.length > 0 && ` · pozostało ${pending.length} ${plural(pending.length, 'adres', 'adresy', 'adresów')}`}
         {' · współrzędne: NFZ + OpenStreetMap (przybliżone)'}
       </div>
     </div>

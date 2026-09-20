@@ -3,6 +3,7 @@ import type { Facility } from '../lib/types';
 import { A11Y_FILTERS } from '../lib/types';
 import { displayBenefit, formatAwaiting, formatDaysLong } from '../lib/wait';
 import { CloseIcon, PhoneIcon, PinIcon } from './Icons';
+import { telHref } from '../lib/html';
 import { WaitBadge } from './WaitBadge';
 
 export function DetailModal({ facility, onClose }: { facility: Facility; onClose: () => void }) {
@@ -113,7 +114,7 @@ export function DetailModal({ facility, onClose }: { facility: Facility; onClose
             <dd className="mt-1 text-sm">
               {facility.phone ? (
                 <a
-                  href={`tel:${facility.phone.replace(/\s/g, '')}`}
+                  href={`tel:${telHref(facility.phone)}`}
                   className="inline-flex items-center gap-1.5 font-medium text-brand-700 hover:underline"
                 >
                   <PhoneIcon className="h-4 w-4" /> {facility.phone}

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { geocodeBatch, type GeoPoint } from '../lib/api';
 import type { GslFacility } from '../lib/types';
 import { escapeHtml, telHref } from '../lib/html';
-import { formatDaysShort, waitLevel, type WaitLevel } from '../lib/wait';
+import { formatDaysShort, plural, waitLevel, type WaitLevel } from '../lib/wait';
 import type * as LType from 'leaflet';
 import { loadLeaflet } from './leaflet-loader';
 
@@ -301,7 +301,7 @@ export function FacilitiesMap({
         {active
           ? `Ustalam współrzędne… ${progress.done}/${progress.total}`
           : pins.length > 0
-            ? `Mapa: ${pins.length} pinezek z ${progress.total} adresów — współrzędne cache'owane.`
+            ? `Mapa: ${pins.length} ${plural(pins.length, 'pinezka', 'pinezki', 'pinezek')} z ${progress.total} ${plural(progress.total, 'adresu', 'adresów', 'adresów')}`
             : progress.total > 0
               ? `Nie udało się ustalić współrzędnych dla tych adresów.${geoFailed > 0 ? ` (błąd sieci: ${geoFailed})` : ''}`
               : 'Mapa: OpenStreetMap (Nominatim).'}
@@ -311,11 +311,11 @@ export function FacilitiesMap({
         {waits !== undefined && waits.size > 0 && !active && (
           <>
             {' '}Kolory pinezek to czas kolejki:{' '}
-            <span style={{ color: WAIT_DOT.great }}>● ≤14 dni</span>
+            <span style={{ color: WAIT_DOT.great }}>● do 14 dni</span>
             {' · '}
-            <span style={{ color: WAIT_DOT.ok }}>● ≤45 dni</span>
+            <span style={{ color: WAIT_DOT.ok }}>● do 45 dni</span>
             {' · '}
-            <span style={{ color: WAIT_DOT.slow }}>● ≤4 mies.</span>
+            <span style={{ color: WAIT_DOT.slow }}>● do 120 dni</span>
             {' · '}
             <span style={{ color: WAIT_DOT.bad }}>● dłużej</span>
             {' · '}

@@ -212,7 +212,13 @@ export async function gslFacilities(
     // po stronie NFZ → odtwórz sesję przez Search i spróbuj Page raz jeszcze.
     sessions.delete(sessKey);
     cookie = undefined;
-    await doSearchWithCookies();
+    try {
+      await doSearchWithCookies();
+    } catch {
+      // odbudowa sesji padła — propagujemy PIERWOTNY błąd (np. timeout/Imperva
+      // z pierwszego fetcha), nie nowy błąd z retry, bo on zatruwa diagnozę
+      throw err;
+    }
     cookie = sessionCookie(sessKey);
     try {
       const html = await fetchPage();

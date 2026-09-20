@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { AlertIcon, PinIcon } from './Icons';
 import { API_BASE } from '../lib/api';
+import { plural } from '../lib/wait';
 
 type AirPollutant = { wskaznik: string; kategoria: string | null; wartosc: number | null };
 type AirStation = { id: number; name: string; city: string; street: string | null };
@@ -40,8 +41,23 @@ const KAT_BG: Record<string, string> = {
   'Bardzo zły': 'bg-red-800',
 };
 
+// miękkie pigułki jak WaitBadge.STYLES — biały tekst na lime/yellow miał
+// kontrast ~2:1, poniżej progu AA
+const KAT_PILL: Record<string, string> = {
+  'Bardzo dobry': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300',
+  Dobry: 'bg-lime-100 text-lime-800 dark:bg-lime-500/15 dark:text-lime-300',
+  Umiarkowany: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-500/15 dark:text-yellow-300',
+  Dostateczny: 'bg-orange-100 text-orange-800 dark:bg-orange-500/15 dark:text-orange-300',
+  'Zły': 'bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-300',
+  'Bardzo zły': 'bg-red-200 text-red-900 dark:bg-red-500/20 dark:text-red-200',
+};
+
 function katDot(kat: string | null): string {
   return KAT_BG[kat ?? ''] ?? 'bg-slate-400';
+}
+
+function katPill(kat: string | null): string {
+  return KAT_PILL[kat ?? ''] ?? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300';
 }
 
 /** Wiersze z pomiarami okolicznymi — używane w karcie stacji i w karcie „brak stacji". */
@@ -54,7 +70,8 @@ function SourceRows({ community, airly }: { community: CommunityAir | null; airl
           <span className="font-medium">Czujniki obywatelskie (Sensor.Community)</span>
           <span className="text-slate-500 dark:text-slate-400">
             — PM2.5: <strong>{community.pm25 ?? '—'}</strong> µg/m³, PM10:{' '}
-            <strong>{community.pm10 ?? '—'}</strong> µg/m³ · {community.count} czujników w 12 km
+            <strong>{community.pm10 ?? '—'}</strong> µg/m³ · {community.count}{' '}
+            {plural(community.count, 'czujnik', 'czujniki', 'czujników')} w 12 km
             {community.nearestKm > 0 && ` (najbliższy ~${community.nearestKm} km)`}
           </span>
         </li>
@@ -76,22 +93,28 @@ function SourceRows({ community, airly }: { community: CommunityAir | null; airl
 
 type Suggestion = { id: number; name: string; city: string };
 
+// błędy API pokazujemy po polsku — surowe „HTTP 500" wpadało do UI 1:1
+async function apiError(res: Response): Promise<Error> {
+  const body = (await res.json().catch(() => null)) as { error?: string } | null;
+  return new Error(body?.error ?? 'Nie udało się pobrać danych — spróbuj ponownie za chwilę.');
+}
+
 async function fetchAirStations(q: string, signal: AbortSignal): Promise<Suggestion[]> {
   const res = await fetch(`${API_BASE}/api/air-stations?locality=${encodeURIComponent(q)}`, { signal });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) throw await apiError(res);
   return ((await res.json()) as { items: Suggestion[] }).items ?? [];
 }
 
 async function fetchAirByStation(id: number): Promise<AirData> {
   const res = await fetch(`${API_BASE}/api/air?station=${id}`);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) throw await apiError(res);
   return (await res.json()) as AirData;
 }
 
 /** Fallback: wyszukiwanie po miejscowości — dla backendów bez obsługi station=. */
 async function fetchAirByLocality(loc: string): Promise<AirData> {
   const res = await fetch(`${API_BASE}/api/air?locality=${encodeURIComponent(loc)}`);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) throw await apiError(res);
   return (await res.json()) as AirData;
 }
 
@@ -329,7 +352,7 @@ export function AirView() {
 
           {data.kategoria && (
             <div className="mt-4 flex flex-wrap items-center gap-3">
-              <span className={`rounded-xl px-4 py-2 text-lg font-bold text-white ${katDot(data.kategoria)}`}>
+              <span className={`rounded-xl px-4 py-2 text-lg font-bold ${katPill(data.kategoria)}`}>
                 {data.kategoria}
               </span>
               <span className="text-sm text-slate-500 dark:text-slate-400">
@@ -360,7 +383,7 @@ export function AirView() {
                   .map((p) => (
                     <span
                       key={p.wskaznik}
-                      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium text-white ${katDot(p.kategoria)}`}
+                      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${katPill(p.kategoria)}`}
                     >
                       {p.wskaznik}: {p.kategoria}
                     </span>

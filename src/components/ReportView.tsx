@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { API_BASE } from '../lib/api';
-import { formatDaysShort } from '../lib/wait';
+import { formatDaysShort, plural } from '../lib/wait';
 import { AlertIcon } from './Icons';
 
 type InsightItem = {
@@ -148,7 +148,7 @@ export function ReportView() {
                     </div>
                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-slate-500 dark:text-slate-400">
                       <span>{item.awaitingTotal === 0 ? 'brak zgłoszonych kolejek' : `${fmtAwaiting(item.awaitingTotal)} w kolejkach`}</span>
-                      <span>{item.facilities} placówek</span>
+                      <span>{item.facilities} {plural(item.facilities, 'placówka', 'placówki', 'placówek')}</span>
                       <span>najszybciej: {formatDaysShort(item.minDays)}</span>
                       <span>najdłużej: {formatDaysShort(item.maxDays)}</span>
                       {item.zeroShare !== null && (

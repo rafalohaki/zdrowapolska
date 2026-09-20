@@ -101,6 +101,8 @@ Testy i jakość:
 bun test                      # testy jednostkowe (parser PCUS, ranking, URL state)
 bun run typecheck             # TypeScript strict (tsc, bez emitu)
 bun run build                 # produkcyjny build frontendu do dist/
+bunx playwright install       # raz — przeglądarki do E2E
+bunx playwright test          # testy E2E (uwaga: uderzają w produkcyjne API yeapi.wpme.pl)
 ```
 
 ### Backend w Dockerze (produkcja na 192.168.1.11:2363 → yeapi.wpme.pl)
