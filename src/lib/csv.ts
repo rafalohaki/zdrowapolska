@@ -11,15 +11,17 @@ const esc = (v: string | number | null | undefined): string => {
 
 /** Ranking placówek → CSV (dla lekarza POZ / druku roboczego). */
 export function facilitiesCsv(facilities: Facility[]): string {
+  // nagłówki z diakrytykami — plik otwierają głównie ludzie (Excel z BOM-em
+  // świetnie czyta UTF-8; dane i tak już są z polskimi znakami)
   const head = [
     'rank',
-    'placowka',
-    'swiadczenie',
-    'wojewodztwo',
-    'miejscowosc',
+    'placówka',
+    'świadczenie',
+    'województwo',
+    'miejscowość',
     'adres',
     'telefon',
-    'oczekujacy',
+    'oczekujący',
     'czas_dni',
     'udogodnienia',
   ];

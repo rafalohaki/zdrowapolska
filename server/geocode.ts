@@ -10,7 +10,8 @@ import { db } from './db';
 
 const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
 const USER_AGENT =
-  process.env.NOMINATIM_USER_AGENT ?? 'ZdrowaPolska/1.0 (hackathon; kontakt: admin@zdrowapolska)';
+  process.env.NOMINATIM_USER_AGENT ??
+  'ZdrowaPolska/1.0 (hackathon; https://github.com/rafalohaki/zdrowapolska)';
 
 export class GeoError extends Data.TaggedError('GeoError')<{
   readonly cause: string;

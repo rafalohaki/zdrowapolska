@@ -26,7 +26,7 @@ Demo: filtr ♿ Rampa → mapa → AI „która placówka najlepsza dla osoby na
 - **Uczciwy scraper**: 1 żądanie/60 ms, harmonogram co 12 h — nie spamujemy publicznego API i świadomie nie rotujemy IP
 - **Odporność**: rate-limit per IP na ciężkich endpointach, snapshoty zamiast żywych zapytań, graceful degradation (Redis/Meili/AI opcjonalne)
 - **Trend kolejki** — historia dzienna snapshotów: „kolejka rośnie/maleje o N%" + alerty Discord przy istotnych zmianach
-- 51 testów (46 jednostkowych + 5 E2E), TypeScript strict, CI na każdym pushu
+- 54 testy (49 jednostkowych + 5 E2E), TypeScript strict, CI na każdym pushu
 
 ## 3:30–4:15 — Uczciwość = zaufanie
 - Widoczny disclaimer: statystyki miesięczne, potwierdź telefonicznie, to nie porada medyczna

@@ -6,5 +6,7 @@ import tailwindcss from '@tailwindcss/vite';
 // Backend działa osobno (Bun + Docker, port 2363, domena yeapi.wpme.pl) — patrz server/.
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  // 5174 — README i playwright.config.ts zakładają ten port
+  server: { port: 5174 },
   build: { outDir: 'dist' },
 });

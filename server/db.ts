@@ -9,6 +9,7 @@
 import { Database } from 'bun:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { normText } from '../src/lib/matchQueues';
 
 const DB_PATH = process.env.DB_PATH ?? './data/zdrowapolska.sqlite';
 mkdirSync(dirname(DB_PATH), { recursive: true });
@@ -207,21 +208,25 @@ export function getSnapshotOne(
   return { total: row.total, records: JSON.parse(row.json), fetchedAt: row.fetched_at };
 }
 
-/** Miejscowości ze snapshotów kolejek — fallback autouzupełniania przy padniętym NFZ. */
+/** Miejscowości ze snapshotów kolejek — fallback autouzupełniania przy padniętym NFZ.
+ *  Dopasowanie po normText (diakrytyki/wielkość liter ignorowane, substring, nie
+ *  tylko prefiks): „sącz" trafia w „NOWY SĄCZ", „lodz" w „ŁÓDŹ" — czego SQL LIKE
+ *  (ASCII-only case-insensitive) nie potrafi. */
 export function likeLocalities(pattern: string, limit: number): string[] {
-  const esc = pattern.replace(/[\\%_]/g, (c) => `\\${c}`);
+  const q = normText(pattern);
+  if (!q) return [];
   return (
     db
       .query(
         `SELECT DISTINCT json_extract(r.value, '$.attributes.locality') AS loc
          FROM queue_snapshots s, json_each(s.json) r
-         WHERE loc LIKE ? ESCAPE '\\'
-         ORDER BY loc LIMIT ?`,
+         ORDER BY loc`,
       )
-      .all(`${esc}%`, limit) as { loc: string | null }[]
+      .all() as { loc: string | null }[]
   )
     .map((r) => r.loc)
-    .filter((x): x is string => Boolean(x));
+    .filter((x): x is string => Boolean(x) && normText(x!).includes(q))
+    .slice(0, limit);
 }
 
 export type GslSnapshot = { total: number; results: unknown[]; fetchedAt: string };

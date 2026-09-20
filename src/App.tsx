@@ -58,7 +58,6 @@ export default function App() {
   const [staleAt, setStaleAt] = useState<string | null>(null);
   const [selected, setSelected] = useState<Facility | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>(() => loadHistory());
-  const startedFor = useRef<string>('');
   // monotoniczna epoka wyszukiwania — powtórzony submit tej samej frazy daje
   // identyczny `key`, więc stary strażnik wyścigów (porównanie kluczy) nie
   // odcinał poprzednich workerów: podwójne zapytania i licznik >16/16
@@ -69,8 +68,6 @@ export default function App() {
   const runSearch = useCallback(
     async (benefit: string, kase: 1 | 2, locality: string, province: string) => {
       if (benefit.length < 3) return;
-      const key = `${benefit}:${kase}:${locality}:${province}`;
-      startedFor.current = key;
       const seq = ++runSeq.current;
       setLoading(true);
       setError(null);
@@ -130,6 +127,42 @@ export default function App() {
     [],
   );
 
+  // dociąga JEDNO województwo i scala z już załadowanymi — używane przy
+  // przełączeniu filtra województwa (runSearch kasowałby resztę stanu,
+  // więc powrót do „Cała Polska" ładowałby wszystko od zera)
+  const fetchSingleProvince = useCallback(
+    (benefit: string, kase: 1 | 2, locality: string, code: string) => {
+      const seq = runSeq.current;
+      setLoading(true);
+      setTargetsTotal(1);
+      setTargetsDone(0);
+      void fetchProvinceQueues(benefit, code, kase, locality)
+        .then((data) => {
+          if (runSeq.current !== seq) return;
+          setFailedCodes((prev) => prev.filter((c) => c !== code));
+          if (data.source === 'stale' && data.fetchedAt) {
+            setStaleAt((prev) => (prev === null || data.fetchedAt! < prev ? data.fetchedAt! : prev));
+          }
+          setProvinces((prev) => sortProvinces([...prev.filter((p) => p.code !== code), data]));
+        })
+        .catch(() => {
+          if (runSeq.current !== seq) return;
+          setFailedCodes((prev) => (prev.includes(code) ? prev : [...prev, code]));
+          setProvinces((prev) =>
+            prev.some((p) => p.code === code)
+              ? prev
+              : [...prev, { code, name: provinceName(code), total: 0, records: [] }],
+          );
+        })
+        .finally(() => {
+          if (runSeq.current !== seq) return;
+          setTargetsDone(1);
+          setLoading(false);
+        });
+    },
+    [],
+  );
+
   // auto-start z URL (linki do wyników są współdzielone)
   useEffect(() => {
     if (state.benefit) void runSearch(state.benefit, state.kase, state.locality, state.province);
@@ -155,16 +188,19 @@ export default function App() {
       patch.province !== state.province &&
       next.benefit
     ) {
+      // „załadowane" = obecność wpisu, NIE records.length>0 — legalnie puste
+      // województwo (0 placówek dla świadczenia) inaczej liczyło się jako brak
+      // i powrót do „Cała Polska" wywoływał cykl refetchów
+      const loaded = new Set(provincesRef.current.map((p) => p.code));
       if (patch.province === 'all') {
         // deep-link ze scoped ?p=06 → powrót do „Cała Polska" musi dociągnąć resztę
-        const loaded = new Set(
-          provincesRef.current.filter((p) => p.records.length > 0).map((p) => p.code),
-        );
         if (FETCH_ORDER.some((c) => !loaded.has(c))) {
           void runSearch(next.benefit, next.kase, next.locality, 'all');
         }
-      } else if (!provincesRef.current.some((p) => p.code === patch.province && p.records.length > 0)) {
-        void runSearch(next.benefit, next.kase, next.locality, patch.province);
+      } else if (!loaded.has(patch.province)) {
+        // dociągnij JEDNO województwo bez kasowania pozostałych — runSearch
+        // zerowałby provinces i powrót do 'all' ładowałby wszystko od zera
+        fetchSingleProvince(next.benefit, next.kase, next.locality, patch.province);
       }
     }
   };
@@ -207,7 +243,6 @@ export default function App() {
         void runSearch(next.benefit, next.kase, next.locality, next.province);
       } else {
         // wstecz do hero / b=<3 znaki — wyczyść wyniki, żeby nie wisiały pod nową frazą
-        startedFor.current = '';
         runSeq.current++;
         setProvinces([]);
         setTargetsDone(0);
@@ -253,9 +288,15 @@ export default function App() {
   );
 
   const copyLink = async () => {
-    // mobilne: natywny share sheet; desktop/brak wsparcia/błąd share: schowek
+    // natywny share sheet tylko na urządzeniach dotykowych — desktopowe
+    // Chrome/Edge też mają navigator.share i otwierałyby sheet OS (AirDrop,
+    // Mail…) zamiast kopiować, a „Kopiuj link" wyglądał wtedy na martwy
+    const coarse =
+      typeof matchMedia === 'function'
+        ? matchMedia('(pointer: coarse)').matches
+        : /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
     try {
-      if (navigator.share) {
+      if (coarse && navigator.share) {
         await navigator.share({ url: location.href, title: document.title });
         return;
       }
@@ -358,8 +399,7 @@ export default function App() {
         mode={mode}
         onMode={goMode}
         onHome={() => {
-          startedFor.current = ''; // wiszące worker'y NFZ przestaną zapisywać wyniki
-          runSeq.current++;
+          runSeq.current++; // wiszące worker'y NFZ przestaną zapisywać wyniki
           modeRef.current = 'terminy';
           setMode('terminy');
           setState(DEFAULT_STATE);

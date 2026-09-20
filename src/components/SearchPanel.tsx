@@ -125,8 +125,8 @@ export function SearchPanel({
   // surowa fraza ('kardiolog') nie jest nazwą świadczenia — NFZ zwraca wtedy
   // pusto. Mapujemy ją na pierwszy traf słownika, jakiejkolwiek by to było
   // (items mogą być stare — debounce mógł jeszcze nie odpalić).
-  const submit = async () => {
-    const q = query.trim();
+  const submit = async (override?: string) => {
+    const q = (override ?? query).trim();
     if (q.length < 3) {
       inputRef.current?.focus();
       return;
@@ -211,8 +211,8 @@ export function SearchPanel({
               aria-controls="locality-listbox"
               aria-activedescendant={locHighlight >= 0 ? `locality-opt-${locHighlight}` : undefined}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && (!locOpen || locHighlight < 0)) {
-                  // Enter bez wyboru podpowiedzi = „Szukaj"
+                if (e.key === 'Enter' && !locOpen) {
+                  // Enter przy zamkniętej liście = „Szukaj"
                   void submit();
                   return;
                 }
@@ -223,10 +223,13 @@ export function SearchPanel({
                 } else if (e.key === 'ArrowUp') {
                   e.preventDefault();
                   setLocHighlight((h) => (h - 1 + locItems.length) % locItems.length);
-                } else if (e.key === 'Enter' && locHighlight >= 0) {
+                } else if (e.key === 'Enter') {
                   e.preventDefault();
-                  onChange({ locality: locItems[locHighlight] });
-                  setLocQuery(locItems[locHighlight]);
+                  // jak w polu świadczenia: Enter przy otwartej liście bierze
+                  // podświetloną podpowiedź, a bez highlightu — pierwszą
+                  const pickLoc = locHighlight >= 0 ? locItems[locHighlight]! : locItems[0]!;
+                  onChange({ locality: pickLoc });
+                  setLocQuery(pickLoc);
                   setLocOpen(false);
                 } else if (e.key === 'Escape') {
                   setLocOpen(false);
@@ -296,7 +299,7 @@ export function SearchPanel({
           <button
             type="button"
             id="szukaj-btn"
-            onClick={submit}
+            onClick={() => void submit()}
             className="rounded-xl bg-brand-600 px-6 py-3 text-base font-semibold text-white shadow-card transition hover:bg-brand-700 active:scale-[0.98] sm:col-span-2 lg:col-span-1"
           >
             Szukaj
@@ -343,8 +346,10 @@ export function SearchPanel({
                 key={h}
                 type="button"
                 onClick={() => {
+                  // hint = jednoklikowe demo: surowa fraza idzie przez to samo
+                  // mapowanie na słownik co submit (kardiolog → ODDZIAŁ …)
                   setQuery(h);
-                  inputRef.current?.focus();
+                  void submit(h);
                 }}
                 className="rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1 text-xs font-medium text-slate-600 dark:text-slate-300 transition hover:bg-brand-100 hover:text-brand-800"
               >

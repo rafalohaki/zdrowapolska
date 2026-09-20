@@ -3,7 +3,7 @@ import { fetchFacilities, fetchProvinceQueues } from '../lib/api';
 import { PROVINCES } from '../lib/provinces';
 import { GSL_CATEGORY_GROUPS, GSL_CATEGORIES, type GslCategoryKey, type GslFacility, type NfzRecord } from '../lib/types';
 import { buildQueueIndex, gslCity, matchFacility, type QueueInfo } from '../lib/matchQueues';
-import { formatDaysLong, formatDaysShort, waitLevel } from '../lib/wait';
+import { formatDaysLong, formatDaysShort, plural, waitLevel } from '../lib/wait';
 import { ErrorState } from './States';
 import { FacilitiesMap } from './FacilitiesMap';
 import { PhoneIcon, PinIcon } from './Icons';
@@ -321,7 +321,8 @@ export function FacilitiesView(props?: {
       {!loading && !error && searched && total !== null && (
         <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Znaleziono <strong className="text-slate-800 dark:text-slate-100">{total}</strong> placówek
+            Znaleziono <strong className="text-slate-800 dark:text-slate-100">{total}</strong>{' '}
+            {plural(total, 'placówkę', 'placówki', 'placówek')}
             {total > results.length && ` — pokazuję ${results.length}, zawęź kryteria (np. nazwą)`}.
             {props?.queueBenefit &&
               (queuesReady

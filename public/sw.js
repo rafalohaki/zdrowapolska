@@ -5,7 +5,7 @@
  * - /assets/* (Vite, hashowane = immutable) i ikony/manifest: cache-first
  * Zmień CACHE przy zmianach logiki — activate czyści stare wersje.
  */
-const CACHE = 'zp-v2';
+const CACHE = 'zp-v3';
 const PRECACHE = ['/', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', (e) => {
@@ -31,7 +31,11 @@ self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;
 
   if (e.request.mode === 'navigate') {
-    e.respondWith(fetch(e.request).catch(() => caches.match('/')));
+    // caches.match('/') może zwrócić undefined (pierwsza nawigacja zanim shell
+    // się zcache'uje) — respondWith(undefined) = przeglądarkowy error page
+    e.respondWith(
+      fetch(e.request).catch(() => caches.match('/').then((r) => r ?? Response.error())),
+    );
     return;
   }
 

@@ -25,13 +25,23 @@ export function FacilityCard({
 
   return (
     <article
+      tabIndex={0}
       onClick={(e) => {
         // karta wygląda klikalnie (hover-lift) → klika też: chyba że trafiono
         // w link/przycisk, który ma własną akcję
         if ((e.target as HTMLElement).closest('a,button')) return;
         onDetails(facility);
       }}
-      className={`animate-fade-up cursor-pointer rounded-2xl border bg-white dark:bg-slate-900 p-5 shadow-card transition hover:shadow-lift ${
+      onKeyDown={(e) => {
+        // tabIndex czyni kartę osiągalną z klawiatury — Enter/Space otwiera
+        // szczegóły tak jak klik (interaktywne dzieci mają własne klawisze)
+        if (e.target !== e.currentTarget) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onDetails(facility);
+        }
+      }}
+      className={`animate-fade-up cursor-pointer rounded-2xl border bg-white dark:bg-slate-900 p-5 shadow-card transition hover:shadow-lift focus-visible:outline-2 focus-visible:outline-brand-500 ${
         rank === 1 ? 'border-brand-300 ring-1 ring-brand-200' : 'border-slate-200 dark:border-slate-800'
       }`}
     >
@@ -61,7 +71,7 @@ export function FacilityCard({
             </span>
             <span className="inline-flex items-center gap-1.5">
               <UsersIcon className="h-4 w-4 text-slate-400 dark:text-slate-500" />
-              {formatAwaiting(facility.awaiting)} w kolejce
+              {formatAwaiting(facility.awaiting)}{facility.awaiting !== null && ' w kolejce'}
             </span>
           </div>
 

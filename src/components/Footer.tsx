@@ -83,27 +83,50 @@ function MobileMenu({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
+  // po otwarciu fokus wchodzi do menu (wzorzec menu), po Escape wraca na trigger
   useEffect(() => {
     if (!open) return;
+    menuRef.current?.querySelector<HTMLElement>('[role=menuitem]')?.focus();
     const close = (e: MouseEvent) => {
       if (!ref.current?.contains(e.target as Node)) setOpen(false);
     };
-    const esc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
     document.addEventListener('mousedown', close);
-    document.addEventListener('keydown', esc);
-    return () => {
-      document.removeEventListener('mousedown', close);
-      document.removeEventListener('keydown', esc);
-    };
+    return () => document.removeEventListener('mousedown', close);
   }, [open]);
+
+  const onMenuKey = (e: React.KeyboardEvent) => {
+    const items = [
+      ...(menuRef.current?.querySelectorAll<HTMLElement>('[role=menuitem]') ?? []),
+    ];
+    if (!items.length) return;
+    const idx = items.indexOf(document.activeElement as HTMLElement);
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      setOpen(false);
+      triggerRef.current?.focus();
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      items[(idx + 1) % items.length]?.focus();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      items[(idx - 1 + items.length) % items.length]?.focus();
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      items[0]?.focus();
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      items[items.length - 1]?.focus();
+    }
+  };
 
   return (
     <div ref={ref} className="relative md:hidden">
       <button
         type="button"
+        ref={triggerRef}
         aria-label="Menu nawigacji"
         aria-expanded={open}
         aria-haspopup="menu"
@@ -120,7 +143,9 @@ function MobileMenu({
       </button>
       {open && (
         <div
+          ref={menuRef}
           role="menu"
+          onKeyDown={onMenuKey}
           className="absolute right-0 z-50 mt-2 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lift dark:border-slate-700 dark:bg-slate-900"
         >
           {MODES.map((m) => (
@@ -128,6 +153,7 @@ function MobileMenu({
               key={m.key}
               type="button"
               role="menuitem"
+              aria-current={mode === m.key ? 'page' : undefined}
               onClick={() => {
                 setOpen(false);
                 onMode(m.key);

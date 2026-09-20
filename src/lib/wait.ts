@@ -105,7 +105,9 @@ export function plural(n: number, one: string, few: string, many: string): strin
 export function formatDaysShort(days: number | null): string {
   if (days === null) return '—';
   if (days === 1) return '1 dzień';
-  if (days <= 45) return `${days} dni`;
+  // dokładne dni do ~2 miesięcy — skok "45 dni" → "~2 mies." przy 46 gubił
+  // informację (46 dni to wciąż ~6,5 tygodnia, nie "2 miesiące")
+  if (days <= 60) return `${days} dni`;
   const months = Math.round(days / 30.42);
   return `~${months} mies.`;
 }
@@ -113,7 +115,7 @@ export function formatDaysShort(days: number | null): string {
 /** "92" → "92 dni" / "3 miesiące" — pełny format do szczegółów */
 export function formatDaysLong(days: number): string {
   if (days === 0) return 'natychmiast (0 dni)';
-  if (days <= 45) return days === 1 ? '1 dzień' : `${days} dni`;
+  if (days <= 60) return days === 1 ? '1 dzień' : `${days} dni`;
   const months = Math.round(days / 30.42);
   if (months === 1) return '1 miesiąc';
   const last = months % 10;
@@ -128,7 +130,10 @@ export function formatAwaiting(n: number | null): string {
   return `${n.toLocaleString('pl-PL')} ${plural(n, 'osoba', 'osoby', 'osób')}`;
 }
 
-const ROMAN = /\b(ii|iii|iv|v|vi|vii|viii|ix|x)\b/g;
+// flaga i jest konieczna: regex aplikowany jest na już title-cased tekście,
+// gdzie rzymskie numery to "Iii"/"Iv" — lowercase-only nigdy by nie trafił
+// i "ODDZIAŁ III" renderowałby się jako "Oddział Iii"
+const ROMAN = /\b(ii|iii|iv|v|vi|vii|viii|ix|x)\b/gi;
 
 /** Nazwy świadczeń NFZ przychodzą drukowanymi WERSALIKAMI („ODDZIAŁ KARDIOLOGICZNY")
  *  — do prezentacji zamieniamy na naturalny zapis zdaniami. Mieszane nazwy

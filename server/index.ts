@@ -161,20 +161,32 @@ app.get('/api/search', limit(30), async (c) => {
   const q = cut((c.req.query('q') ?? c.req.query('name') ?? '').trim(), 80);
   const limit = intParam(c.req.query('limit'), 25, 1, 25);
   if (q.length < 3) return c.json({ items: [], count: 0, source: 'meilisearch' });
-  const res = await cached(`search:${q.toLowerCase()}:${limit}`, 10 * 60 * 1000, () =>
-    searchBenefits(q, limit),
-  );
-  return c.json({ items: res.items, count: res.items.length, source: res.source });
+  try {
+    const res = await cached(`search:${q.toLowerCase()}:${limit}`, 10 * 60 * 1000, () =>
+      searchBenefits(q, limit),
+    );
+    return c.json({ items: res.items, count: res.items.length, source: res.source });
+  } catch (err) {
+    // awaria NFZ + puste Meili/SQLite → degradacja na pustą listę zamiast 500
+    // (autouzupełnianie nie może umierać, gdy reszta apki płynie na snapshotach)
+    noteNfzError(err);
+    return c.json({ items: [], count: 0, source: 'nfz' });
+  }
 });
 
 // Kompatybilność ze starym kształtem (słownik po fragmencie)
 app.get('/api/benefits', limit(30), async (c) => {
   const name = cut((c.req.query('name') ?? '').trim(), 80);
   if (name.length < 3) return c.json({ items: [], count: 0 });
-  const res = await cached(`search:${name.toLowerCase()}:25`, TTL.dictionaries, () =>
-    searchBenefits(name, 25),
-  );
-  return c.json({ items: res.items, count: res.items.length });
+  try {
+    const res = await cached(`search:${name.toLowerCase()}:25`, TTL.dictionaries, () =>
+      searchBenefits(name, 25),
+    );
+    return c.json({ items: res.items, count: res.items.length });
+  } catch (err) {
+    noteNfzError(err);
+    return c.json({ items: [], count: 0 });
+  }
 });
 
 function assembleFromDb(
@@ -219,6 +231,9 @@ async function assemblePartialFromDb(
         saveSnapshot(benefit, p.code, kase, d.total, d.records, locality);
         return d;
       } catch (err) {
+        // braki z tej ścieżki też zamykają obwód — bez noteNfzError awaria NFZ
+        // powtarzałaby kosztowną pętlę dociągania przy każdym compare
+        noteNfzError(err);
         errors.push({ code: p.code, message: err instanceof Error ? err.message : String(err) });
         return null;
       }
@@ -283,6 +298,11 @@ app.get('/api/compare', limit(12), async (c) => {
     const dbKey = `dbcompare:${benefit}:${kase}:${pages}:${locality}`;
     if (saved >= PROVINCES.length) {
       return c.json(await cached(dbKey, TTL.dbCompare, async () => assembleFromDb(benefit, kase, snaps)));
+    }
+    // częściowe snapshoty + zamknięty obwód: dociąganie braków kosztuje minuty
+    // i młóci leżący upstream — serwuj to, co jest, ze znacznikiem stale
+    if (nfzDown()) {
+      return c.json({ ...assembleFromDb(benefit, kase, snaps), stale: true });
     }
     return c.json(
       await cached(

@@ -32,7 +32,7 @@ const SEED_PREFIXES = [
   'odd', 'por', 'zak', 'świ', 'lec', 'reh', 'ośr', 'hos', 'izb', 'pro',
   'sto', 'kar', 'ort', 'uro', 'neu', 'onk', 'oku', 'gin', 'che', 'dia',
   'end', 'gas', 'der', 'reu', 'psy', 'fiz', 'nef', 'pal', 'pie', 'pul',
-  'amb', 'ope', 'tra', 'wst', 'zab', 'kra', 'oty', 'wym', 'nar', 'zab',
+  'amb', 'ope', 'tra', 'wst', 'zab', 'kra', 'oty', 'wym', 'nar',
 ];
 
 type SyncStatus = {
@@ -115,7 +115,9 @@ export async function syncBenefits(): Promise<number> {
 }
 
 export async function syncQueuesForBenefit(benefit: string, kase: 1 | 2 = 1): Promise<QueueChange[]> {
-  const compare = await getCompare(benefit, kase, Number(process.env.SYNC_PAGES ?? 1));
+  // SYNC_PAGES=1 zapisywałby węższe snapshoty niż żywe zapytanie (domyślne
+  // pages=2 w /api/compare) — ranking z bazy traciłby rekordy ze strony 2
+  const compare = await getCompare(benefit, kase, Number(process.env.SYNC_PAGES ?? 2));
   // województwa z błędem (429/sieć) pomijamy — pusty snapshot z 0 rekordów byłby
   // serwowany z bazy jako "świeży" przez 24 h i zamrażał dziurę w wynikach
   const failed = new Set(compare.errors.map((e) => e.code));
