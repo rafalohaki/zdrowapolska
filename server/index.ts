@@ -434,8 +434,13 @@ app.get('/api/facilities', limit(30), async (c) => {
     }
     // Błąd upstream GSL NFZ (sesja/paginacja/Imperva) — 502, nie 500: problem leży
     // po stronie NFZ, nie w naszym kodzie. Frontend pokazuje retry bez kasowania listy.
+    // Surowy message („The operation timed out", EN z fetch/Impervy) nie nadaje się
+    // do UI — tłumaczymy na zrozumiały polski.
     console.error('[facilities]', category, province, page, err);
-    return c.json({ error: err instanceof Error ? err.message : 'NFZ chwilowo niedostępny' }, 502);
+    return c.json(
+      { error: 'Serwis NFZ „Gdzie się leczyć" nie odpowiada — spróbuj ponownie za chwilę.' },
+      502,
+    );
   }
 });
 
