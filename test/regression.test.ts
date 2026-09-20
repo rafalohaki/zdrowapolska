@@ -153,7 +153,7 @@ describe('facilitiesCsv — eksport rankingu', () => {
     const csv = facilitiesCsv([f('SZPITAL "MIEJSKI"; RZESZÓW') as never]);
     expect(csv.charCodeAt(0)).toBe(0xfeff);
     const lines = csv.slice(1).split('\r\n'); // slice zdejmuje BOM
-    expect(lines[0].startsWith('rank;placowka')).toBe(true);
+    expect(lines[0].startsWith('rank;placówka')).toBe(true);
     expect(lines[1]).toContain('"SZPITAL ""MIEJSKI""; RZESZÓW"');
     expect(lines[1]).toContain(';45;');
   });
