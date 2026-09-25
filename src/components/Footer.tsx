@@ -22,7 +22,7 @@ function ThemeToggle() {
       type="button"
       id="theme-toggle" onClick={toggle}
       aria-label={dark ? 'Włącz tryb jasny' : 'Włącz tryb ciemny'}
-      className="rounded-lg border border-slate-200 p-2 text-slate-500 transition hover:border-brand-300 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-brand-500"
+      className="rounded-lg border border-slate-200 p-2.5 min-h-10 min-w-10 text-slate-500 transition hover:border-brand-300 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-brand-500"
     >
       {dark ? <SunIcon /> : <MoonIcon />}
     </button>
@@ -51,7 +51,7 @@ function InstallButton() {
           await p.prompt();
           setReady(false);
         }}
-        className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-700"
+        className="rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-brand-700"
       >
         Zainstaluj
       </button>
@@ -73,7 +73,7 @@ const MODES: { key: AppMode; label: string }[] = [
   { key: 'placowki', label: 'Placówki NFZ' },
 ];
 
-/** Menu mobilne — bez niego na telefonie były tylko 2 z 5 trybów. */
+/** Menu mobilne — pokazuje wszystkie tryby, gdy nie mieszczą się na pasku (do lg). */
 function MobileMenu({
   mode,
   onMode,
@@ -123,7 +123,7 @@ function MobileMenu({
   };
 
   return (
-    <div ref={ref} className="relative md:hidden">
+    <div ref={ref} className="relative lg:hidden">
       <button
         type="button"
         ref={triggerRef}
@@ -131,7 +131,7 @@ function MobileMenu({
         aria-expanded={open}
         aria-haspopup="menu"
         onClick={() => setOpen((o) => !o)}
-        className="rounded-lg border border-slate-200 p-2 text-slate-600 transition hover:border-brand-300 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+        className="rounded-lg border border-slate-200 p-2.5 min-h-10 min-w-10 text-slate-600 transition hover:border-brand-300 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5" aria-hidden="true">
           {open ? (
@@ -200,7 +200,7 @@ export function Header({
             Zdrowa<span className="text-brand-600 dark:text-brand-400">Polska</span>
           </span>
         </button>
-        <nav className="flex items-center gap-4 text-sm font-medium text-slate-600 dark:text-slate-300">
+        <nav className="flex items-center gap-3 text-sm font-medium text-slate-600 dark:text-slate-300 md:gap-4">
           {MODES.map((m) => (
             <button
               key={m.key}
@@ -208,7 +208,11 @@ export function Header({
               id={`nav-${m.key}`}
               onClick={() => onMode(m.key)}
               aria-current={mode === m.key ? 'page' : undefined}
-              className={`hidden transition md:block ${
+              className={`hidden whitespace-nowrap transition ${
+                // najdłuższe etykiety od lg — na md łamały wiersz nawigacji;
+                // do lg sięga wtedy hamburger (MobileMenu)
+                m.key === 'wsparcie' || m.key === 'powietrze' ? 'lg:block' : 'md:block'
+              } ${
                 mode === m.key
                   ? 'font-semibold text-brand-700 dark:text-brand-400'
                   : 'hover:text-brand-700 dark:hover:text-brand-400'
@@ -221,7 +225,7 @@ export function Header({
             href="https://dane.gov.pl"
             target="_blank"
             rel="noreferrer"
-            className="hidden transition hover:text-brand-700 dark:hover:text-brand-400 md:block"
+            className="hidden whitespace-nowrap transition hover:text-brand-700 dark:hover:text-brand-400 md:block"
           >
             Dane otwarte ↗
           </a>
@@ -249,7 +253,7 @@ export function Footer() {
             miesięczne)
           </p>
         </div>
-        <p className="mt-4 text-xs leading-relaxed text-slate-400">
+        <p className="mt-4 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
           Projekt hackathonowy. Aplikacja pokazuje oficjalne statystyki kolejek (w tym prognozę PCUS),
           a nie konkretne wolne terminy wizyt — ostateczną dostępność potwierdź telefonicznie w placówce.
           Serwis nie stanowi porady medycznej; w nagłych przypadkach dzwoń na 112 lub 999.

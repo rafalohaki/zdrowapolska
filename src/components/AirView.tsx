@@ -276,7 +276,7 @@ export function AirView() {
           aria-controls="air-listbox"
           aria-activedescendant={highlight >= 0 ? `air-opt-${suggestions[highlight]?.id}` : undefined}
           autoComplete="off"
-          className="mt-2 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 text-sm shadow-card outline-none transition placeholder:text-slate-400 focus:border-brand-400"
+          className="mt-2 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 text-base shadow-card outline-none transition placeholder:text-slate-400 focus:border-brand-400"
         />
         <button
           type="button"
@@ -304,7 +304,7 @@ export function AirView() {
                     setQuery(st.name);
                     loadStation(st);
                   }}
-                  className={`block w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 ${
+                  className={`block w-full px-4 py-2.5 text-left text-sm text-slate-700 dark:text-slate-200 ${
                     i === highlight
                       ? 'bg-brand-50 dark:bg-brand-900/30'
                       : 'hover:bg-brand-50 dark:hover:bg-brand-900/30'
@@ -336,7 +336,7 @@ export function AirView() {
           <div className="flex items-start gap-3">
             <span className={`mt-1 h-4 w-4 shrink-0 rounded-full ${katDot(data.kategoria)}`} />
             <div>
-              <p className="text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500">
+              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 Stacja pomiarowa
               </p>
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white">

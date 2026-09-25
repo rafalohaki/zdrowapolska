@@ -85,12 +85,18 @@ export function toFacility(
 
 export type WaitLevel = 'great' | 'ok' | 'slow' | 'bad' | 'unknown';
 
+/** Kanon progów poziomów oczekiwania — z tej tabeli żyje waitLevel i legendy UI
+ *  (CompareChart), więc progi i podpisy nie mogą rozjechać się między miejsca. */
+export const WAIT_LEVELS: { level: WaitLevel; maxDays: number | null; label: string }[] = [
+  { level: 'great', maxDays: 14, label: 'do 14 dni' },
+  { level: 'ok', maxDays: 45, label: 'do 45 dni' },
+  { level: 'slow', maxDays: 120, label: 'do 120 dni' },
+  { level: 'bad', maxDays: null, label: 'dłużej' },
+];
+
 export function waitLevel(days: number | null): WaitLevel {
   if (days === null) return 'unknown';
-  if (days <= 14) return 'great';
-  if (days <= 45) return 'ok';
-  if (days <= 120) return 'slow';
-  return 'bad';
+  return WAIT_LEVELS.find((l) => l.maxDays !== null && days <= l.maxDays)?.level ?? 'bad';
 }
 
 /** Polska odmiana liczebnika: plural(1,'dzień','dni','dni') */

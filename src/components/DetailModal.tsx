@@ -102,7 +102,7 @@ export function DetailModal({ facility, onClose }: { facility: Facility; onClose
 
         <dl className="mt-6 grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
           <div>
-            <dt className="text-xs font-medium tracking-wide text-slate-400 dark:text-slate-500 uppercase">Adres</dt>
+            <dt className="text-xs font-medium tracking-wide text-slate-600 dark:text-slate-400 uppercase">Adres</dt>
             <dd className="mt-1 flex items-start gap-1.5 text-sm text-slate-800 dark:text-slate-100">
               <PinIcon className="mt-0.5 h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" />
               <span>
@@ -113,7 +113,7 @@ export function DetailModal({ facility, onClose }: { facility: Facility; onClose
             </dd>
           </div>
           <div>
-            <dt className="text-xs font-medium tracking-wide text-slate-400 dark:text-slate-500 uppercase">Telefon</dt>
+            <dt className="text-xs font-medium tracking-wide text-slate-600 dark:text-slate-400 uppercase">Telefon</dt>
             <dd className="mt-1 text-sm">
               {facility.phone ? (
                 <a
@@ -128,11 +128,11 @@ export function DetailModal({ facility, onClose }: { facility: Facility; onClose
             </dd>
           </div>
           <div>
-            <dt className="text-xs font-medium tracking-wide text-slate-400 dark:text-slate-500 uppercase">Osoby w kolejce</dt>
+            <dt className="text-xs font-medium tracking-wide text-slate-600 dark:text-slate-400 uppercase">Osoby w kolejce</dt>
             <dd className="mt-1 text-sm text-slate-800 dark:text-slate-100">{formatAwaiting(facility.awaiting)}</dd>
           </div>
           <div>
-            <dt className="text-xs font-medium tracking-wide text-slate-400 dark:text-slate-500 uppercase">
+            <dt className="text-xs font-medium tracking-wide text-slate-600 dark:text-slate-400 uppercase">
               Szacowany czas oczekiwania
             </dt>
             <dd className="mt-1 text-sm text-slate-800 dark:text-slate-100">
@@ -140,13 +140,13 @@ export function DetailModal({ facility, onClose }: { facility: Facility; onClose
             </dd>
           </div>
           <div>
-            <dt className="text-xs font-medium tracking-wide text-slate-400 dark:text-slate-500 uppercase">
+            <dt className="text-xs font-medium tracking-wide text-slate-600 dark:text-slate-400 uppercase">
               Statystyki placówki zgłoszone do NFZ
             </dt>
             <dd className="mt-1 text-sm text-slate-800 dark:text-slate-100">{facility.statsUpdate ?? '—'}</dd>
           </div>
           <div>
-            <dt className="text-xs font-medium tracking-wide text-slate-400 dark:text-slate-500 uppercase">
+            <dt className="text-xs font-medium tracking-wide text-slate-600 dark:text-slate-400 uppercase">
               Stan danych NFZ na dzień
             </dt>
             <dd className="mt-1 text-sm text-slate-800 dark:text-slate-100">{facility.situationAsAt ?? '—'}</dd>

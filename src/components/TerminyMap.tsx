@@ -37,6 +37,9 @@ export function TerminyMap({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<LType.Map | null>(null);
+  // debounced fitBounds: markery dochodzą batchami geokodowania — dopasowanie
+  // ma liczyć się raz, po OSTATNIEJ zmianie zestawu, nie przy każdym batchu
+  const fitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [resolving, setResolving] = useState(false);
   const triedRef = useRef<Set<string>>(new Set());
   const [retryTick, setRetryTick] = useState(0);
@@ -54,8 +57,8 @@ export function TerminyMap({
   useEffect(
     () => () => {
       const m = mapRef.current;
+      if (fitTimerRef.current) clearTimeout(fitTimerRef.current);
       if (m) {
-        lastFit.delete(m);
         m.remove();
         mapRef.current = null;
       }
@@ -173,8 +176,15 @@ export function TerminyMap({
               }`,
             );
         }
-        if (bounds.length > 0 && mapKeyChanged(map, mapKey)) {
-          map.fitBounds(bounds, { padding: [40, 40], maxZoom: 12 });
+        if (bounds.length > 0) {
+          // fitBounds przy każdej zmianie zestawu markerów (nie tylko na nowy
+          // mapKey) — inaczej zoom zostaje na pierwszych 1–2 geokodowanych
+          // punktach, a reszta placówek ląduje poza kadrem; debounce scala
+          // batche, a ostatni (po zakończonym ładowaniu) wygrywa
+          if (fitTimerRef.current) clearTimeout(fitTimerRef.current);
+          fitTimerRef.current = setTimeout(() => {
+            map.fitBounds(bounds, { padding: [40, 40], maxZoom: 12 });
+          }, 400);
         }
       } catch (err) {
         console.error('[map] init/render failed:', err);
@@ -198,19 +208,10 @@ export function TerminyMap({
           <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: WAIT_PIN_COLORS.unknown }} />brak danych</span>
         </div>
         {plotted.length} z {facilities.length} {plural(facilities.length, 'placówki', 'placówek', 'placówek')} na mapie
-        {resolving && ' · geokoduję adresy…'}
+        {resolving && ' · Geokoduję adresy…'}
         {pending.length > 0 && ` · pozostało ${pending.length} ${plural(pending.length, 'adres', 'adresy', 'adresów')}`}
         {' · współrzędne: NFZ + OpenStreetMap (przybliżone)'}
       </div>
     </div>
   );
 }
-
-const lastFit = new Map<LType.Map, string>();
-function mapKeyChanged(map: LType.Map, key: string): boolean {
-  if (lastFit.get(map) === key) return false;
-  lastFit.set(map, key);
-  return true;
-}
-
-

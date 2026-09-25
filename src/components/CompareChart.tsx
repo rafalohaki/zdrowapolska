@@ -1,28 +1,44 @@
 import type { Facility } from '../lib/types';
-import { formatDaysShort, plural, waitLevel } from '../lib/wait';
+import { formatDaysShort, plural, WAIT_LEVELS, waitLevel } from '../lib/wait';
 import { WAIT_BAR_CLASSES } from '../lib/waitColors';
 
 // kolory słupków = te same poziomy co WaitBadge (spójny język „jak długo czeka")
-// — definicje w lib/waitColors.ts (współdzielone z mapami i pigułkami)
+// — definicje w lib/waitColors.ts, progi i podpisy w lib/wait.ts (WAIT_LEVELS)
 
 export type ProvinceStat = {
   code: string;
   name: string;
   bestDays: number | null;
+  medianDays: number | null;
   facilities: number;
 };
 
-/** Statystyki per województwo: najkrótszy czas oczekiwania (z już przefiltrowanych placówek). */
+/** Statystyki per województwo: najkrótszy i typowy (mediana) czas oczekiwania
+ *  (z już przefiltrowanych placówek) — mediana pilnuje uczciwego obrazu obok
+ *  „cherry-picked" minimum. */
 export function provinceStats(facilities: Facility[]): ProvinceStat[] {
-  const map = new Map<string, { name: string; best: number | null; count: number }>();
+  const map = new Map<string, { name: string; best: number | null; count: number; days: number[] }>();
   for (const f of facilities) {
-    const cur = map.get(f.province) ?? { name: f.provinceName, best: null, count: 0 };
+    const cur = map.get(f.province) ?? { name: f.provinceName, best: null, count: 0, days: [] };
     cur.count++;
-    if (f.days !== null && (cur.best === null || f.days < cur.best)) cur.best = f.days;
+    if (f.days !== null) {
+      cur.days.push(f.days);
+      if (cur.best === null || f.days < cur.best) cur.best = f.days;
+    }
     map.set(f.province, cur);
   }
   return [...map.entries()]
-    .map(([code, v]) => ({ code, name: v.name, bestDays: v.best, facilities: v.count }))
+    .map(([code, v]) => {
+      const sorted = [...v.days].sort((a, b) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      const median =
+        sorted.length === 0
+          ? null
+          : sorted.length % 2
+            ? sorted[mid]!
+            : Math.round((sorted[mid - 1]! + sorted[mid]!) / 2);
+      return { code, name: v.name, bestDays: v.best, medianDays: median, facilities: v.count };
+    })
     .sort((a, b) => (a.bestDays ?? 9_999_999) - (b.bestDays ?? 9_999_999));
 }
 
@@ -66,6 +82,20 @@ export function CompareChart({
         )}
       </div>
 
+      {/* legenda z tego samego źródła progów co WaitBadge i słupki — zero hardcoded liczb */}
+      <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+        {WAIT_LEVELS.map((l) => (
+          <span key={l.level} className="inline-flex items-center gap-1">
+            <span aria-hidden="true" className={`h-2 w-2 rounded-full ${WAIT_BAR_CLASSES[l.level]}`} />
+            {l.label}
+          </span>
+        ))}
+        <span className="inline-flex items-center gap-1">
+          <span aria-hidden="true" className={`h-2 w-2 rounded-full ${WAIT_BAR_CLASSES.unknown}`} />
+          brak danych
+        </span>
+      </div>
+
       <ul className="space-y-2.5">
         {stats.map((s) => {
           const days = s.bestDays;
@@ -84,7 +114,7 @@ export function CompareChart({
                 }`}
                 title={`Filtruj: ${s.name}`}
               >
-                <span className="w-28 shrink-0 truncate text-sm text-slate-600 dark:text-slate-300 sm:w-44">{s.name}</span>
+                <span className="w-24 shrink-0 truncate text-sm text-slate-600 dark:text-slate-300 sm:w-44">{s.name}</span>
                 <span className="relative h-6 flex-1 overflow-hidden rounded-md bg-slate-100 dark:bg-slate-800">
                   <span
                     className={`absolute inset-y-0 left-0 rounded-md transition-all ${color} ${
@@ -100,8 +130,11 @@ export function CompareChart({
                     />
                   )}
                 </span>
-                <span className="w-16 shrink-0 text-right text-sm font-semibold tabular-nums text-slate-800 dark:text-slate-100 sm:w-24">
+                <span className="w-20 shrink-0 text-right text-sm font-semibold tabular-nums text-slate-800 dark:text-slate-100 sm:w-24">
                   {formatDaysShort(s.bestDays)}
+                </span>
+                <span className="hidden w-28 shrink-0 text-right text-xs tabular-nums text-slate-500 dark:text-slate-400 md:block">
+                  mediana {formatDaysShort(s.medianDays)}
                 </span>
                 <span className="hidden w-24 shrink-0 text-right text-xs tabular-nums text-slate-500 dark:text-slate-400 sm:block">
                   {s.facilities} {plural(s.facilities, 'placówka', 'placówki', 'placówek')}

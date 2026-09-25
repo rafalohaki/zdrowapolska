@@ -224,7 +224,7 @@ export function FacilitiesView(props?: {
                     setCategory(cat.key);
                     run(cat.key, province, name);
                   }}
-                  className={`rounded-full border px-3.5 py-1.5 text-sm font-medium transition ${
+                  className={`rounded-full border px-3.5 py-2 text-sm font-medium transition ${
                     category === cat.key
                       ? 'border-brand-500 bg-brand-500 text-white'
                       : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:border-brand-300'
@@ -253,7 +253,7 @@ export function FacilitiesView(props?: {
               }}
               placeholder="Nazwa (opcjonalnie), np. Alba…"
               aria-label="Nazwa placówki"
-              className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3 text-sm shadow-card outline-none transition placeholder:text-slate-400 dark:text-slate-100 focus:border-brand-400"
+              className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3 text-base shadow-card outline-none transition placeholder:text-slate-400 dark:text-slate-100 focus:border-brand-400"
             />
           )}
           <select
@@ -263,7 +263,7 @@ export function FacilitiesView(props?: {
               run(category, e.target.value, name);
             }}
             aria-label="Województwo"
-            className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-3 text-sm shadow-card outline-none focus:border-brand-400"
+            className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-3 text-base shadow-card outline-none focus:border-brand-400"
           >
             {PROVINCES.map((p) => (
               <option key={p.code} value={p.code}>
@@ -376,7 +376,7 @@ export function FacilitiesView(props?: {
                 </span>
               </div>
               {g.address && (
-                <p className="mt-1 flex items-center gap-1.5 text-sm text-slate-600 dark:text-slate-300">
+                <p className="mt-1 flex items-center gap-1.5 text-base text-slate-600 dark:text-slate-300">
                   <PinIcon className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" />
                   {g.address}
                 </p>
@@ -418,7 +418,7 @@ export function FacilitiesView(props?: {
                 className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-6 py-3 text-sm font-semibold text-slate-700 dark:text-slate-200 shadow-card transition hover:border-brand-300 hover:text-brand-700 disabled:opacity-50"
               >
                 {loadingMore
-                  ? 'Doczytuję…'
+                  ? 'Doczytuję kolejne…'
                   : `Pokaż więcej (pozostało ${total - results.length})`}
               </button>
               {moreError && (

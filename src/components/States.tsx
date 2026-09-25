@@ -62,7 +62,7 @@ export function EmptyState({ onPickHint }: { onPickHint: (name: string) => void 
             key={n}
             type="button"
             onClick={() => onPickHint(n)}
-            className="rounded-full bg-brand-50 px-3.5 py-1.5 text-xs font-medium text-brand-700 transition hover:bg-brand-100 dark:bg-brand-500/10 dark:text-brand-300 dark:hover:bg-brand-500/20"
+            className="rounded-full bg-brand-50 px-3.5 py-1.5 min-h-10 text-xs font-medium text-brand-700 transition hover:bg-brand-100 dark:bg-brand-500/10 dark:text-brand-300 dark:hover:bg-brand-500/20"
           >
             {displayBenefit(n)}
           </button>

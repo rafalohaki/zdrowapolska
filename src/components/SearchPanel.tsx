@@ -172,7 +172,7 @@ export function SearchPanel({
   return (
     <div className={hero ? 'w-full max-w-5xl' : 'w-full'}>
       <div ref={boxRef} className="relative">
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-[1fr_minmax(150px,190px)_minmax(150px,190px)_minmax(150px,170px)_auto]">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-[1fr_minmax(150px,200px)_minmax(150px,200px)_minmax(150px,170px)_auto]">
           <div className="relative">
             <SearchIcon className="pointer-events-none absolute top-1/2 left-3.5 h-5 w-5 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
             <input
@@ -241,7 +241,7 @@ export function SearchPanel({
               }}
               placeholder="Miejscowość (opcjonalnie)"
               aria-label="Miejscowość"
-              className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-3 pr-3 pl-10 text-sm shadow-card outline-none transition placeholder:text-slate-400 dark:text-slate-100 focus:border-brand-400"
+              className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-3 pr-3 pl-10 text-base shadow-card outline-none transition placeholder:text-slate-400 dark:text-slate-100 focus:border-brand-400"
             />
             {locOpen && locQuery.trim().length >= 3 && locItems.length > 0 && (
               <ul
@@ -262,7 +262,7 @@ export function SearchPanel({
                         setLocQuery(name);
                         setLocOpen(false);
                       }}
-                      className={`block w-full px-4 py-2 text-left text-sm ${
+                      className={`block w-full px-4 py-2.5 text-left text-sm ${
                         i === locHighlight
                           ? 'bg-brand-50 text-brand-800 dark:bg-brand-900/40 dark:text-brand-200'
                           : 'text-slate-700 dark:text-slate-200'
@@ -280,7 +280,7 @@ export function SearchPanel({
             value={province}
             onChange={(e) => onChange({ province: e.target.value })}
             aria-label="Województwo"
-            className="w-full min-w-0 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-3 text-sm shadow-card outline-none focus:border-brand-400"
+            className="w-full min-w-0 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-3 text-base shadow-card outline-none focus:border-brand-400"
           >
             <option value="all">Cała Polska</option>
             {PROVINCES.map((p) => (
@@ -294,7 +294,7 @@ export function SearchPanel({
             value={kase}
             onChange={(e) => onChange({ kase: e.target.value === '2' ? 2 : 1 })}
             aria-label="Typ przypadku"
-            className="w-full min-w-0 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-3 text-sm shadow-card outline-none focus:border-brand-400"
+            className="w-full min-w-0 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-3 text-base shadow-card outline-none focus:border-brand-400"
           >
             <option value={1}>Przypadek stabilny</option>
             <option value={2}>Przypadek pilny</option>
@@ -317,7 +317,7 @@ export function SearchPanel({
             className="absolute z-30 mt-2 max-h-72 w-full overflow-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-1 shadow-lift"
           >
             {items.length === 0 && loadingDict && (
-              <li className="px-4 py-2.5 text-sm text-slate-400 dark:text-slate-500">szukam podpowiedzi…</li>
+              <li className="px-4 py-2.5 text-sm text-slate-400 dark:text-slate-500">Szukam podpowiedzi…</li>
             )}
             {items.map((name, i) => (
               /* li = presentation: rola option na button — li[role=option] z
@@ -355,7 +355,7 @@ export function SearchPanel({
                   setQuery(h);
                   void submit(h);
                 }}
-                className="rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1 text-xs font-medium text-slate-600 dark:text-slate-300 transition hover:bg-brand-100 hover:text-brand-800"
+                className="rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1 min-h-10 text-xs font-medium text-slate-600 dark:text-slate-300 transition hover:bg-brand-100 hover:text-brand-800"
               >
                 {h}
               </button>
@@ -371,7 +371,11 @@ export function SearchPanel({
       )}
 
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filtr dostępności">
+        <div
+          className="-mx-4 flex min-w-0 flex-1 flex-nowrap gap-1.5 overflow-x-auto px-4 pb-1 [mask-image:linear-gradient(to_right,black_calc(100%_-_1.5rem),transparent)] sm:mx-0 sm:flex-wrap sm:px-0 sm:[mask-image:none]"
+          role="group"
+          aria-label="Filtr dostępności"
+        >
           {A11Y_FILTERS.map((f) => {
             const active = a11y.includes(f.key);
             return (
@@ -384,7 +388,7 @@ export function SearchPanel({
                     a11y: active ? a11y.filter((k) => k !== f.key) : [...a11y, f.key],
                   })
                 }
-                className={`inline-flex items-center rounded-full border px-3.5 py-1.5 text-xs font-medium transition ${
+                className={`inline-flex items-center rounded-full border px-3.5 py-1.5 min-h-10 text-xs font-medium transition ${
                   active
                     ? 'border-brand-500 bg-brand-500 text-white'
                     : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:border-brand-300 dark:hover:border-brand-500'
@@ -396,16 +400,18 @@ export function SearchPanel({
           })}
         </div>
 
-        <label className="ml-auto flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+        {/* własny wiersz na mobile: wąski ekran + szeroki select rozpychały
+            pasek chipów do 30–60 px (wyostrzone „Ram") */}
+        <label className="flex w-full shrink-0 items-center justify-start gap-2 text-xs text-slate-500 dark:text-slate-400 sm:ml-auto sm:w-auto">
           Sortuj:
           <select
             value={sort}
             onChange={(e) => onChange({ sort: e.target.value as SortKey })}
-            className="min-w-0 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-2 py-1.5 text-xs outline-none focus:border-brand-400"
+            className="select-compact min-w-0 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 min-h-10 px-3 text-base outline-none focus:border-brand-400"
           >
-            <option value="wait">czas oczekiwania</option>
-            <option value="awaiting">liczba oczekujących</option>
-            <option value="name">nazwa placówki</option>
+            <option value="wait">Najkrótszy czas oczekiwania</option>
+            <option value="awaiting">Najmniej osób w kolejce</option>
+            <option value="name">Nazwa (A–Z)</option>
           </select>
         </label>
       </div>

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchProvinceQueues } from './lib/api';
-import { displayBenefit, plural, toFacility } from './lib/wait';
+import { displayBenefit, formatAwaiting, formatDaysShort, plural, toFacility } from './lib/wait';
 import { provinceName } from './lib/provinces';
 import { pushHistory, loadHistory, type HistoryItem } from './lib/history';
 import type { A11yKey, Facility, ProvinceData } from './lib/types';
@@ -32,6 +32,35 @@ function PageLoader() {
   return (
     <div className="flex min-h-[50vh] items-center justify-center" role="status" aria-busy="true">
       <span className="h-8 w-8 animate-spin rounded-full border-4 border-brand-200 border-t-brand-600" />
+    </div>
+  );
+}
+
+/** Karta statystyki nad wynikami. `muted`: liczba dublowana z linią aria-live —
+ *  chowamy ją przed SR, żeby nie czytał jej dwa razy. */
+function StatCard({
+  label,
+  value,
+  caption,
+  muted,
+  partial,
+}: {
+  label: string;
+  value: string;
+  caption?: string;
+  muted?: boolean;
+  partial: boolean;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card dark:border-slate-800 dark:bg-slate-900">
+      <p className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+        {partial && <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-brand-500" />}
+        {label}
+      </p>
+      <p aria-hidden={muted || undefined} className="mt-1 text-2xl font-bold tabular-nums text-slate-900 dark:text-white">
+        {value}
+      </p>
+      {caption && <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{caption}</p>}
     </div>
   );
 }
@@ -406,7 +435,39 @@ export default function App() {
     return d.length % 2 ? d[mid] : Math.round((d[mid - 1] + d[mid]) / 2);
   }, [statsFacilities]);
 
+  // karty statystyk: najszybsza placówka i suma oczekujących liczone jawnie —
+  // „wszystko null" to „brak danych", nie pokazowe 0
+  const fastestDays = useMemo(() => {
+    let min: number | null = null;
+    for (const f of facilities) {
+      if (f.days !== null && (min === null || f.days < min)) min = f.days;
+    }
+    return min;
+  }, [facilities]);
+
+  const awaitingSum = useMemo(() => {
+    let sum = 0;
+    let any = false;
+    for (const f of facilities) {
+      if (f.awaiting !== null) {
+        any = true;
+        sum += f.awaiting;
+      }
+    }
+    return any ? sum : null;
+  }, [facilities]);
+
+  // najnowsze „stan danych na dzień" (ISO daty sortują się leksykograficznie)
+  const dataAsAt = useMemo(() => {
+    let max: string | null = null;
+    for (const f of facilities) {
+      if (f.situationAsAt && (max === null || f.situationAsAt > max)) max = f.situationAsAt;
+    }
+    return max;
+  }, [facilities]);
+
   const started = Boolean(state.benefit) && (loading || provinces.length > 0 || error !== null);
+  const partialData = loading && targetsDone < targetsTotal;
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -470,9 +531,19 @@ export default function App() {
         ) : (
           <>
         {!started ? (
-          <section className="mx-auto flex max-w-5xl flex-col items-center px-4 pt-16 pb-10 text-center sm:pt-24">
-            <h1 className="text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white sm:text-5xl">
-              Gdzie do <span className="text-brand-600">specjalisty</span> najszybciej?
+          <section className="relative isolate mx-auto flex max-w-5xl flex-col items-center overflow-x-clip px-4 pt-16 pb-10 text-center sm:pt-24">
+            {/* aurora: rozmyta plama + gradient pod treścią — aria-hidden; clip TYLKO
+                w poziomie: pionowy overflow musi zostać, bo absolutny listbox
+                podpowiedzi i panel HINTS wychodzą poza dolną krawędź sekcji */}
+            <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10">
+              <div className="absolute -top-24 left-1/2 h-72 w-[42rem] -translate-x-1/2 rounded-full bg-brand-200/50 blur-3xl dark:bg-brand-800/30" />
+              <div className="absolute inset-0 bg-gradient-to-tr from-brand-100/60 via-transparent dark:from-brand-900/25" />
+            </div>
+            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              Oficjalne dane NFZ · aktualizacja miesięczna
+            </p>
+            <h1 className="mt-3 text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white sm:text-5xl">
+              Gdzie do <span className="bg-gradient-to-r from-brand-600 to-teal-500 bg-clip-text text-transparent">specjalisty</span> najszybciej?
             </h1>
             <p className="mt-4 max-w-xl text-lg text-slate-500 dark:text-slate-400">
               Porównujemy <strong>oficjalne czasy oczekiwania NFZ</strong> w 16 województwach. Wpisz
@@ -499,7 +570,7 @@ export default function App() {
                     key={`${h.benefit}|${h.locality}`}
                     type="button"
                     onClick={() => search(h.benefit, h.locality)}
-                    className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600 shadow-card transition hover:border-brand-300 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-brand-500"
+                    className="rounded-full border border-slate-200 bg-white px-3 py-1 min-h-10 text-xs font-medium text-slate-600 shadow-card transition hover:border-brand-300 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-brand-500"
                   >
                     {displayBenefit(h.benefit)}
                     {h.locality ? ` · ${h.locality}` : ''}
@@ -527,18 +598,18 @@ export default function App() {
           <section className="mx-auto max-w-6xl px-4 pt-6 pb-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h1 className="text-lg font-bold text-slate-900 dark:text-white">
-                  „{displayBenefit(state.benefit)}"
-                  <span className="ml-2 text-sm font-normal text-slate-500 dark:text-slate-400">
-                    {state.locality ? state.locality : state.province === 'all' ? 'cała Polska' : `woj. ${provinceName(state.province)}`}
-                    {state.kase === 2 && ' • przypadek pilny'}
-                  </span>
+                <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-2xl">
+                  „{displayBenefit(state.benefit)}”
                 </h1>
+                <p className="mt-1 text-sm font-normal text-slate-500 dark:text-slate-400">
+                  {state.locality ? state.locality : state.province === 'all' ? 'cała Polska' : `woj. ${provinceName(state.province)}`}
+                  {state.kase === 2 && ' • przypadek pilny'}
+                </p>
                 {/* live-region tylko na gotowy wynik — podczas ładowania SR czytałoby
                     16× rosnący licznik zamiast końcowego komunikatu */}
                 <p className="text-sm text-slate-500 dark:text-slate-400" aria-live={loading ? 'off' : 'polite'}>
                   {loading && facilities.length === 0
-                    ? 'pobieram dane…'
+                    ? 'Pobieram dane…'
                     : `${facilities.length} ${plural(facilities.length, 'placówka', 'placówki', 'placówek')}`}
                   {state.a11y.length > 0 && ` (po filtrze dostępności)`} ·{" "}
                   <abbr title="Prognozowany Czas Udzielenia Świadczenia — statystyka NFZ, aktualizowana miesięcznie" className="underline decoration-dotted">
@@ -567,7 +638,7 @@ export default function App() {
                   type="button"
                   onClick={copyLink}
                   title="Skopiuj link do tych wyników"
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 shadow-card transition hover:border-brand-300 hover:text-brand-700"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-2.5 text-xs font-medium text-slate-600 dark:text-slate-300 shadow-card transition hover:border-brand-300 hover:text-brand-700"
                 >
                   {copied ? <CheckIcon className="h-4 w-4 text-brand-600" /> : <LinkIcon className="h-4 w-4" />}
                   {copied ? 'Skopiowano' : 'Kopiuj link'}
@@ -582,7 +653,7 @@ export default function App() {
                       )
                     }
                     title="Pobierz ranking jako CSV (Excel)"
-                    className="no-print inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 shadow-card transition hover:border-brand-300 hover:text-brand-700"
+                    className="no-print inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-2.5 text-xs font-medium text-slate-600 dark:text-slate-300 shadow-card transition hover:border-brand-300 hover:text-brand-700"
                   >
                     Eksport CSV
                   </button>
@@ -594,7 +665,7 @@ export default function App() {
                       type="button"
                       aria-pressed={state.view === v}
                       onClick={() => update({ view: v })}
-                      className={`rounded-lg px-4 py-1.5 text-sm font-medium transition ${
+                      className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
                         state.view === v ? 'bg-brand-600 text-white' : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
                       }`}
                     >
@@ -604,6 +675,50 @@ export default function App() {
                 </div>
               </div>
             </div>
+
+            {(facilities.length > 0 || (loading && targetsDone > 0)) && (
+              <>
+                <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <StatCard
+                    label="Placówki w rankingu"
+                    value={`${facilities.length}`}
+                    muted
+                    partial={partialData}
+                  />
+                  <StatCard
+                    label="Mediana oczekiwania"
+                    value={
+                      medianDays !== null
+                        ? `${medianDays} ${plural(medianDays, 'dzień', 'dni', 'dni')}`
+                        : 'brak danych'
+                    }
+                    caption="połowa placówek czeka krócej"
+                    muted
+                    partial={partialData}
+                  />
+                  <StatCard
+                    label="Najszybsza placówka"
+                    value={fastestDays !== null ? formatDaysShort(fastestDays) : 'brak danych'}
+                    partial={partialData}
+                  />
+                  <StatCard
+                    label="Osoby w kolejce"
+                    value={awaitingSum !== null ? formatAwaiting(awaitingSum) : 'brak danych'}
+                    partial={partialData}
+                  />
+                </div>
+                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                  {partialData && <>dane częściowe · {targetsDone}/{targetsTotal} woj. · </>}
+                  Źródło: NFZ PCUS, aktualizacja miesięczna
+                  {dataAsAt && (
+                    <>
+                      {' '}· stan danych na{' '}
+                      {new Date(dataAsAt).toLocaleDateString('pl-PL', { day: 'numeric', month: 'long', year: 'numeric' })}
+                    </>
+                  )}
+                </p>
+              </>
+            )}
 
             {loading && provinces.length === 0 && (
               <div className="mt-6 space-y-3">
@@ -656,15 +771,32 @@ export default function App() {
             )}
 
             {facilities.length > 0 && (
-              <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_360px]">
+              <div className="mt-6">
+                {/* mobile: aside z AI jest w DOM za 30 kartami (grid dopiero od lg) —
+                    button (nie kotwica: href tworzyłby wpis historii, a popstate przy
+                    benefit≥3 odpala runSearch) przewija do panelu bez dotykania historii */}
+                <button
+                  type="button"
+                  onClick={() => document.getElementById('ai-panel')?.scrollIntoView({ behavior: 'smooth' })}
+                  className="mb-4 inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-medium text-slate-600 shadow-card transition hover:border-brand-300 hover:text-brand-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 lg:hidden"
+                >
+                  Porada AI ↓
+                </button>
+                <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
                 <div>
                   {state.view === 'ranking' ? (
                     <div className="space-y-3">
                       {facilities.slice(0, 30).map((f, i) => (
-                        <FacilityCard key={f.id} facility={f} rank={i + 1} onDetails={setSelected} />
+                        <FacilityCard
+                          key={f.id}
+                          facility={f}
+                          rank={i + 1}
+                          style={{ animationDelay: `${Math.min(i, 10) * 35}ms` }}
+                          onDetails={setSelected}
+                        />
                       ))}
                       {facilities.length > 30 && (
-                        <p className="pt-2 text-center text-sm text-slate-400 dark:text-slate-500">
+                        <p className="pt-2 text-center text-sm text-slate-500 dark:text-slate-400">
                           Pokazuję 30 z {facilities.length} {plural(facilities.length, 'placówki', 'placówek', 'placówek')} — zawęź wyniki filtrem województwa lub
                           dostępności.
                         </p>
@@ -686,7 +818,7 @@ export default function App() {
                     />
                   )}
                 </div>
-                <aside className="lg:sticky lg:top-20 lg:self-start">
+                <aside id="ai-panel" className="scroll-mt-24 lg:sticky lg:top-20 lg:self-start">
                   <AiPanel
                     benefit={state.benefit}
                     kase={state.kase}
@@ -694,6 +826,7 @@ export default function App() {
                     datasetKey={`${state.benefit}|${state.kase}|${state.locality}|${state.province}|${state.a11y.join(',')}|${state.sort}`}
                   />
                 </aside>
+                </div>
               </div>
             )}
           </section>

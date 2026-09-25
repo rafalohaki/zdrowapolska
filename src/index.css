@@ -81,6 +81,27 @@ label {
   @apply bg-slate-700;
 }
 
+/* własny chevron selectów — natywna strzałka (zależna od OS) to jedyny „obcy”
+   element w języku rounded-xl + shadow-card. stroke zahardkodowany (slate-500 /
+   slate-400): background-image nie dziedziczy currentColor. Reguła niewarstwowa
+   wygrywa z utility (jak :focus-visible wyżej); selectOption w Playwright działa
+   normalnie z appearance:none. */
+select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-position: right 0.75rem center;
+  background-repeat: no-repeat;
+  padding-right: 2.25rem;
+}
+.dark select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}
+/* wąski select sorta (SearchPanel): chevron bliżej tekstu, bez odlotu */
+select.select-compact {
+  padding-right: 1.5rem;
+  background-position: right 0.5rem center;
+}
+
 /* atrybucja: domyślny półprzezroczysty biały blok Leafleta świeci w dark mode.
    Trzy klasy (0,3,0), bo dwuklasowa reguła .leaflet-container .leaflet-control-attribution
    z leaflet.css (0,2,0) wygrywa remisem kolejnością — leaflet.css dołącza się PÓŹNIEJ */
@@ -98,12 +119,14 @@ label {
   @apply text-brand-700 dark:text-brand-400;
 }
 
-/* użytkownicy z preferencją ograniczenia ruchu — zero animacji */
+/* użytkownicy z preferencją ograniczenia ruchu — zero animacji
+   (delay też: przy fill-mode „both” karty z staggerem wisałyby w opacity:0) */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
     transition-duration: 0.01ms !important;
   }
   html {
