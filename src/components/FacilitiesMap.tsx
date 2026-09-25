@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { geocodeBatch, type GeoPoint } from '../lib/api';
 import type { GslFacility } from '../lib/types';
 import { escapeHtml, telHref } from '../lib/html';
-import { formatDaysShort, plural, waitLevel, type WaitLevel } from '../lib/wait';
+import { formatDaysShort, plural, waitLevel } from '../lib/wait';
+import { WAIT_PIN_COLORS } from '../lib/waitColors';
 import type * as LType from 'leaflet';
 import { loadLeaflet } from './leaflet-loader';
 
@@ -21,13 +22,7 @@ function makePin(L: typeof LType, dark: boolean, color = '#059669'): LType.DivIc
   });
 }
 
-const WAIT_DOT: Record<WaitLevel, string> = {
-  great: '#059669',
-  ok: '#65a30d',
-  slow: '#f59e0b',
-  bad: '#dc2626',
-  unknown: '#64748b',
-};
+const WAIT_DOT = WAIT_PIN_COLORS;
 
 /** Startowy widok mapy: stolica województwa + zoom 8 (zamiast całej Polski). */
 const PROVINCE_VIEW: Record<string, { at: [number, number]; zoom: number }> = {
@@ -297,7 +292,7 @@ export function FacilitiesMap({
           </div>
         )}
       </div>
-      <p className="px-4 py-2 text-xs text-slate-400 dark:text-slate-500">
+      <p className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">
         {active
           ? `Ustalam współrzędne… ${progress.done}/${progress.total}`
           : pins.length > 0
@@ -306,7 +301,10 @@ export function FacilitiesMap({
               ? `Nie udało się ustalić współrzędnych dla tych adresów.${geoFailed > 0 ? ` (błąd sieci: ${geoFailed})` : ''}`
               : 'Mapa: OpenStreetMap (Nominatim).'}
         {!active && pins.length > 0 && geoFailed > 0 && (
-          <span className="text-amber-600 dark:text-amber-400"> · {geoFailed} adresów pominięto po błędzie sieci</span>
+          <span className="text-amber-600 dark:text-amber-400">
+            {' · '}
+            {geoFailed} {plural(geoFailed, 'adres', 'adresy', 'adresów')} pominięto po błędzie sieci
+          </span>
         )}
         {waits !== undefined && waits.size > 0 && !active && (
           <>

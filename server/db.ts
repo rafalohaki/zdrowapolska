@@ -72,6 +72,21 @@ db.exec(`
   );
 `);
 
+// sprzątanie trujących snapshotów: w wolumenie bazy pojawiały się wiersze z
+// sentinelową fetched_at z 2020-01-01 — MIN(fetched_at) w snapshotAgeHours pomijał
+// przez nie świeżą ścieżkę DB przy /api/compare, a awaria NFZ serwowała 6-letnie
+// dane jako stale. LIKE zamiast exact: wolumen ma format ISO '2020-01-01T00:00:00(.000)Z'
+// (tak seeduje też test regresyjny), a realny sync nigdy tej daty nie zapisze.
+{
+  const snaps = db.query('DELETE FROM queue_snapshots WHERE fetched_at LIKE ?').run('2020-01-01%');
+  const hist = db.query('DELETE FROM queue_history WHERE fetched_at LIKE ?').run('2020-01-01%');
+  if (Number(snaps.changes) + Number(hist.changes) > 0) {
+    console.log(
+      `[db] usunięto trujące wiersze z fetched_at LIKE '2020-01-01%': snapshots=${snaps.changes}, history=${hist.changes}`,
+    );
+  }
+}
+
 const now = () => new Date().toISOString();
 
 export function saveBenefits(names: string[]): number {
@@ -227,6 +242,33 @@ export function likeLocalities(pattern: string, limit: number): string[] {
     .map((r) => r.loc)
     .filter((x): x is string => Boolean(x) && normText(x!).includes(q))
     .slice(0, limit);
+}
+
+/** Kanoniczna nazwa NFZ dla miejscowości wpisanej bez diakrytyków: DOKŁADNE trafienie
+ *  po normText („KRAKOW" → „KRAKÓW" — NFZ wymaga diakrytyków i na „krakow" zwraca 0
+ *  wyników). Bez trafu zwraca wejście bez zmian — nie zgadujemy nazwy z prefiksu.
+ *  Skan json_each po całej tabeli snapshotów jest kosztowny, więc wynik per fraza
+ *  trzymamy chwilę w pamięci (snapshoty doklejają się w tle synchronizacji). */
+const canonicalCache = new Map<string, { at: number; value: string }>();
+const CANONICAL_TTL_MS = 5 * 60_000;
+
+export function canonicalLocality(name: string): string {
+  if (!name) return name;
+  const hit = canonicalCache.get(name);
+  if (hit && Date.now() - hit.at < CANONICAL_TTL_MS) return hit.value;
+  const q = normText(name);
+  const rows = q
+    ? (db
+        .query(
+          `SELECT DISTINCT json_extract(r.value, '$.attributes.locality') AS loc
+           FROM queue_snapshots s, json_each(s.json) r`,
+        )
+        .all() as { loc: string | null }[])
+    : [];
+  const value =
+    rows.map((r) => r.loc).find((x): x is string => Boolean(x) && normText(x!) === q) ?? name;
+  canonicalCache.set(name, { at: Date.now(), value });
+  return value;
 }
 
 export type GslSnapshot = { total: number; results: unknown[]; fetchedAt: string };

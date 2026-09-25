@@ -1,14 +1,9 @@
 import type { Facility } from '../lib/types';
 import { formatDaysShort, plural, waitLevel } from '../lib/wait';
+import { WAIT_BAR_CLASSES } from '../lib/waitColors';
 
 // kolory słupków = te same poziomy co WaitBadge (spójny język „jak długo czeka")
-const BAR_COLOR: Record<string, string> = {
-  great: 'bg-emerald-500',
-  ok: 'bg-lime-500',
-  slow: 'bg-amber-400',
-  bad: 'bg-rose-500',
-  unknown: 'bg-slate-300 dark:bg-slate-600',
-};
+// — definicje w lib/waitColors.ts (współdzielone z mapami i pigułkami)
 
 export type ProvinceStat = {
   code: string;
@@ -75,7 +70,7 @@ export function CompareChart({
         {stats.map((s) => {
           const days = s.bestDays;
           const width = days === null ? 0 : days === 0 ? 5 : Math.max((days / max) * 100, 4);
-          const color = BAR_COLOR[waitLevel(days)];
+          const color = WAIT_BAR_CLASSES[waitLevel(days)];
           const isSel = selected === s.code;
           return (
             <li key={s.code}>

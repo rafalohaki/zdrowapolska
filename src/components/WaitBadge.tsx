@@ -1,14 +1,5 @@
 import { formatDaysShort, plural, waitLevel } from '../lib/wait';
-
-// miękkie pigułki (jak WAIT_PILL w FacilitiesView) — biały tekst na lime-500
-// miał kontrast ~2:1, poniżej progu AA
-const STYLES: Record<string, string> = {
-  great: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300',
-  ok: 'bg-lime-100 text-lime-800 dark:bg-lime-500/15 dark:text-lime-300',
-  slow: 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300',
-  bad: 'bg-rose-100 text-rose-800 dark:bg-rose-500/15 dark:text-rose-300',
-  unknown: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
-};
+import { WAIT_BADGE_CLASSES } from '../lib/waitColors';
 
 const LABELS: Record<string, string> = {
   great: 'szybko',
@@ -29,7 +20,7 @@ export function WaitBadge({ days, size = 'md' }: { days: number | null; size?: '
       : `Czas oczekiwania: ${days} ${plural(days, 'dzień', 'dni', 'dni')} (${LABELS[level]})`;
   return (
     <span
-      className={`inline-flex items-center gap-2 rounded-full font-semibold tabular-nums ${STYLES[level]} ${pad}`}
+      className={`inline-flex items-center gap-2 rounded-full font-semibold tabular-nums ${WAIT_BADGE_CLASSES[level]} ${pad}`}
       title={title}
     >
       {formatDaysShort(days)}

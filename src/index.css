@@ -81,6 +81,23 @@ label {
   @apply bg-slate-700;
 }
 
+/* atrybucja: domyślny półprzezroczysty biały blok Leafleta świeci w dark mode.
+   Trzy klasy (0,3,0), bo dwuklasowa reguła .leaflet-container .leaflet-control-attribution
+   z leaflet.css (0,2,0) wygrywa remisem kolejnością — leaflet.css dołącza się PÓŹNIEJ */
+.dark .leaflet-container .leaflet-control-attribution {
+  @apply bg-slate-900/80 text-slate-400;
+}
+.dark .leaflet-control-attribution a {
+  @apply text-slate-300;
+}
+
+/* telefon w popupie pinezki: leaflet.css koloruje każdy link .leaflet-container a
+   na #0078A8 (3,61:1 na slate-900 — poniżej AA). Wyższa specyficzność (0,2,1) i
+   zakres tylko treści popupu: kontrolka zoomu i link atrybucji zostają przy swoich */
+.leaflet-popup .leaflet-popup-content a {
+  @apply text-brand-700 dark:text-brand-400;
+}
+
 /* użytkownicy z preferencją ograniczenia ruchu — zero animacji */
 @media (prefers-reduced-motion: reduce) {
   *,

@@ -52,26 +52,34 @@ export function AiPanel({
   benefit,
   kase,
   facilities,
+  datasetKey,
 }: {
   benefit: string;
   kase: 1 | 2;
   facilities: Facility[];
+  /** Sygnatura wejścia doradcy (benefit|kase|locality|province|a11y|sort) — jej zmiana
+   *  czyści odpowiedź, by analiza poprzedniego zestawu nie wyglądała na aktualną. */
+  datasetKey: string;
 }) {
   const [answer, setAnswer] = useState<AiResponse | null>(null);
   const [question, setQuestion] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // stare rozmowy z poprzedniego świadczenia nie mogą wyglądać jak analiza nowych wyników
-  const lastParams = useRef(`${benefit}|${kase}`);
+  // rekomendacja z poprzedniego zestawu wyników (zmiana województwa/filtra dostępności
+  // bez remontu panelu) nie może wyglądać jak analiza nowych danych
+  const lastDataset = useRef(datasetKey);
   const reqSeq = useRef(0);
   useEffect(() => {
-    const cur = `${benefit}|${kase}`;
-    if (lastParams.current !== cur) {
-      lastParams.current = cur;
+    if (lastDataset.current !== datasetKey) {
+      lastDataset.current = datasetKey;
+      // nieważni odpowiedź w locie ze STAREGO zestawu — bez tego przyjdzie po
+      // zmianie filtrów, przejdzie kontrolę seq i nadpisze wyczyszczony panel
+      reqSeq.current++;
       setAnswer(null);
       setError(null);
+      setLoading(false);
     }
-  }, [benefit, kase]);
+  }, [datasetKey]);
 
   const ask = (q?: string) => {
     setLoading(true);

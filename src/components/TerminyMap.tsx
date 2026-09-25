@@ -1,20 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { geocodeBatch } from '../lib/api';
 import { formatDaysShort, plural, waitLevel } from '../lib/wait';
+import { WAIT_PIN_COLORS } from '../lib/waitColors';
 import { escapeHtml, telHref } from '../lib/html';
 import type { Facility } from '../lib/types';
 import type * as LType from 'leaflet';
 import { loadLeaflet } from './leaflet-loader';
 
 export type ResolvedFacility = Facility & { rlat: number | null; rlon: number | null };
-
-const PIN_COLORS: Record<string, string> = {
-  great: '#059669',
-  ok: '#65a30d',
-  slow: '#f59e0b',
-  bad: '#f43f5e',
-  unknown: '#94a3b8',
-};
 
 function makePin(L: typeof LType, color: string, dark: boolean): LType.DivIcon {
   return L.divIcon({
@@ -169,7 +162,7 @@ export function TerminyMap({
         for (const f of plotted.slice(0, 200)) {
           bounds.push([f.rlat as number, f.rlon as number]);
           L.marker([f.rlat as number, f.rlon as number], {
-            icon: makePin(L, PIN_COLORS[waitLevel(f.days)], dark),
+            icon: makePin(L, WAIT_PIN_COLORS[waitLevel(f.days)], dark),
           })
             .addTo(map)
             .bindPopup(
@@ -196,13 +189,13 @@ export function TerminyMap({
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-card dark:border-slate-800 dark:bg-slate-900">
       <div ref={containerRef} className="z-0 h-96 w-full" />
-      <div className="px-4 py-2 text-xs text-slate-400 dark:text-slate-500">
+      <div className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">
         <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: PIN_COLORS.great }} />do 14 dni</span>
-          <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: PIN_COLORS.ok }} />do 45 dni</span>
-          <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: PIN_COLORS.slow }} />do 120 dni</span>
-          <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: PIN_COLORS.bad }} />dłużej</span>
-          <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: PIN_COLORS.unknown }} />brak danych</span>
+          <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: WAIT_PIN_COLORS.great }} />do 14 dni</span>
+          <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: WAIT_PIN_COLORS.ok }} />do 45 dni</span>
+          <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: WAIT_PIN_COLORS.slow }} />do 120 dni</span>
+          <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: WAIT_PIN_COLORS.bad }} />dłużej</span>
+          <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: WAIT_PIN_COLORS.unknown }} />brak danych</span>
         </div>
         {plotted.length} z {facilities.length} {plural(facilities.length, 'placówki', 'placówek', 'placówek')} na mapie
         {resolving && ' · geokoduję adresy…'}

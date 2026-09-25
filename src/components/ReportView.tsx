@@ -137,7 +137,7 @@ export function ReportView() {
                     <div className="flex flex-wrap items-baseline justify-between gap-2">
                       <h3 className="font-semibold text-slate-900 dark:text-white">{item.label}</h3>
                       <span className="text-sm font-semibold tabular-nums text-slate-800 dark:text-slate-100">
-                        {item.avgDays === null ? 'brak danych' : `śr. ${item.avgDays} dni`}
+                        {item.avgDays === null ? 'brak danych' : `śr. ${item.avgDays} ${plural(item.avgDays, 'dzień', 'dni', 'dni')}`}
                       </span>
                     </div>
                     <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
@@ -161,7 +161,7 @@ export function ReportView() {
               })}
           </ul>
 
-          <p className="mt-4 text-xs text-slate-400 dark:text-slate-500">
+          <p className="mt-4 text-xs text-slate-500 dark:text-slate-400">
             Raport wygenerowano: {new Date(report.generatedAt).toLocaleString('pl-PL')} · średnia
             liczona z placówek z danymi · statystyki NFZ aktualizowane miesięcznie.
           </p>

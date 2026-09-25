@@ -347,9 +347,12 @@ export async function airlyNear(lat: number, lon: number): Promise<AirlyAir | nu
         return typeof v === 'number' ? v : null;
       };
       const level = idx?.level ?? null;
+      // Airly zwraca pełną precyzję float — jak w Sensor.Community zaokrąglamy do 0,1
+      // (caqi zostaje: UI zaokrągla go przy renderze; kategoria pochodzi z pola level API)
+      const round1 = (v: number | null) => (v !== null ? Math.round(v * 10) / 10 : null);
       return {
-        pm25: val('PM25'),
-        pm10: val('PM10'),
+        pm25: round1(val('PM25')),
+        pm10: round1(val('PM10')),
         caqi: typeof idx?.value === 'number' ? idx.value : null,
         kategoria: level ? (AIRLY_LEVEL_TO_KAT[level] ?? null) : null,
         level,
@@ -451,8 +454,18 @@ export async function airStationsByLocality(localityRaw: string): Promise<
   const q = normCity(localityRaw);
   if (q.length < 3) return [];
   const stations = await allStations();
+  // miasto przed nazwą: „Kraków" nie może przegrywać z „Piotrków Trybunalski,
+  // ul. Krakowskie Przedmieście" tylko przez niższy id GIOŚ. Po nazwie dopasowujemy
+  // tylko część przed przecinkiem („Miasto, ulica"), a gdy przecinka nie ma —
+  // pełną nazwę (nie każda stacja GIOŚ ma ten format)
+  const cityHit = (st: (typeof stations)[number]) => normCity(st.city).includes(q);
+  const nameHit = (st: (typeof stations)[number]) => {
+    const head = st.name.split(',')[0];
+    return normCity(head).includes(q);
+  };
   return stations
-    .filter((st) => normCity(st.city).includes(q) || normCity(st.name).includes(q))
+    .filter((st) => cityHit(st) || nameHit(st))
+    .sort((a, b) => Number(cityHit(b)) - Number(cityHit(a)) || a.name.localeCompare(b.name, 'pl'))
     .slice(0, 8)
     .map((st) => ({ id: st.id, name: st.name, city: st.city }));
 }
@@ -485,6 +498,14 @@ export async function airForLocality(localityRaw: string): Promise<{
           // puste miasto stacji (c='') też łapało wszystko przez includes('')
           return c.includes(locality) || (c.length > 0 && locality.includes(c)) || n.includes(locality);
         });
+  // ranking jak w airStationsByLocality: stacje z dopasowanym miastem przed
+  // pozostałymi (nazwa jako tie-breaker) — bez tego „Kraków" jako WYBRANĄ stację
+  // dostawało Piotrków Trybunalski („ul. Krakowskie Przedmieście", niski id GIOŚ)
+  matches.sort(
+    (a, b) =>
+      Number(normCity(b.city).includes(locality)) - Number(normCity(a.city).includes(locality)) ||
+      a.name.localeCompare(b.name, 'pl'),
+  );
 
   // kandydaci na stację urzędową: dopasowanie po nazwie, a gdy miejscowość nie ma
   // stacji — najbliższa GIOŚ po współrzędnych (geokodowanie z cache)

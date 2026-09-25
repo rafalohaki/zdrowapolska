@@ -4,18 +4,11 @@ import { PROVINCES } from '../lib/provinces';
 import { GSL_CATEGORY_GROUPS, GSL_CATEGORIES, type GslCategoryKey, type GslFacility, type NfzRecord } from '../lib/types';
 import { buildQueueIndex, gslCity, matchFacility, type QueueInfo } from '../lib/matchQueues';
 import { formatDaysLong, formatDaysShort, plural, waitLevel } from '../lib/wait';
+import { WAIT_PILL_CLASSES } from '../lib/waitColors';
 import { ErrorState } from './States';
 import { FacilitiesMap } from './FacilitiesMap';
 import { PhoneIcon, PinIcon } from './Icons';
-import type { WaitLevel } from '../lib/wait';
 
-const WAIT_PILL: Record<WaitLevel, string> = {
-  great: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300',
-  ok: 'bg-lime-50 text-lime-700 dark:bg-lime-500/10 dark:text-lime-300',
-  slow: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300',
-  bad: 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300',
-  unknown: 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
-};
 export function FacilitiesView(props?: {
   initialCategory?: GslCategoryKey;
   initialName?: string;
@@ -318,7 +311,7 @@ export function FacilitiesView(props?: {
         </p>
       )}
 
-      {!loading && !error && searched && total !== null && (
+      {!loading && !error && searched && total !== null && total > 0 && (
         <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm text-slate-500 dark:text-slate-400">
             Znaleziono <strong className="text-slate-800 dark:text-slate-100">{total}</strong>{' '}
@@ -370,14 +363,14 @@ export function FacilitiesView(props?: {
                   {waitByGroup.get(g.key) && waitByGroup.get(g.key)!.days !== null && (
                     <span
                       title={formatDaysLong(waitByGroup.get(g.key)!.days!)}
-                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${WAIT_PILL[waitLevel(waitByGroup.get(g.key)!.days)]}`}
+                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${WAIT_PILL_CLASSES[waitLevel(waitByGroup.get(g.key)!.days)]}`}
                     >
                       Kolejka: {formatDaysShort(waitByGroup.get(g.key)!.days)}
                     </span>
                   )}
                   {g.count > 1 && (
                     <span className="rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-700 dark:bg-brand-500/10 dark:text-brand-300">
-                      {g.count} wpisów NFZ
+                      {g.count} {plural(g.count, 'wpis', 'wpisy', 'wpisów')} NFZ
                     </span>
                   )}
                 </span>

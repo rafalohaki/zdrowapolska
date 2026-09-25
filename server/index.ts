@@ -27,7 +27,7 @@ import {
 import { searchBenefits, reindexBenefits } from './search';
 import { getSyncStatus, startSyncScheduler, triggerSync } from './sync';
 import { GSL_CATEGORIES, gslFacilities, type GslCategory } from './gsl';
-import { getGslSnapshot, likeLocalities, saveGslSnapshot } from './db';
+import { canonicalLocality, getGslSnapshot, likeLocalities, saveGslSnapshot } from './db';
 import { getConnInfo } from 'hono/bun';
 
 const app = new Hono();
@@ -271,6 +271,11 @@ app.get('/api/localities', limit(30), async (c) => {
       const items = await cached(`localities:${name.toLowerCase()}`, TTL.dictionaries, () =>
         getLocalities(name),
       );
+      // NFZ wymaga diakrytyków i na frazę bez nich („krakow") zwraca pusto —
+      // dogrywamy wtedy dopasowaniem po normText z własnych snapshotów
+      if (items.length > 0) return c.json({ items });
+      const dbItems = likeLocalities(name, 15);
+      if (dbItems.length > 0) return c.json({ items: dbItems, source: 'db' });
       return c.json({ items });
     } catch (err) {
       noteNfzError(err);
@@ -285,7 +290,8 @@ app.get('/api/compare', limit(12), async (c) => {
   const benefit = cut((c.req.query('benefit') ?? '').trim(), 120);
   const kase = c.req.query('case') === '2' ? 2 : 1;
   const pages = intParam(c.req.query('pages'), 2, 1, 4);
-  const locality = cut((c.req.query('locality') ?? '').trim().toUpperCase(), 60);
+  // „KRAKOW" bez diakrytyków daje z NFZ 0 wyników — rozwiązujemy do kanonicznej nazwy
+  const locality = canonicalLocality(cut((c.req.query('locality') ?? '').trim().toUpperCase(), 60));
   if (benefit.length < 3) {
     return c.json({ error: 'Podaj świadczenie (min. 3 znaki)' }, 400);
   }
@@ -340,7 +346,40 @@ app.get('/api/compare', limit(12), async (c) => {
     for (const p of data.provinces) {
       if (!failed.has(p.code)) saveSnapshot(benefit, p.code, kase, p.total, p.records, locality);
     }
-    return c.json(data);
+    // getCompare połyka błędy per województwo i nigdy nie rzuca — bez tej gałęzi
+    // totalny pad NFZ wyglądał jak „0 placówek w całej Polsce" (HTTP 200), a catch
+    // z fallbackiem na snapshoty i noteNfzError były nieosiągalne
+    if (failed.size === 0) return c.json(data);
+    if (failed.size >= PROVINCES.length) {
+      // padły WSZYSTKIE: to awaria upstreamu, nie puste wyniki — zamknij obwód
+      // (retry kolejnych zapytań za 45 s), a snapshoty serwuj ze znacznikiem stale
+      noteNfzError(new Error(data.errors[0].message));
+      if (saved > 0) {
+        return c.json({
+          ...assembleFromDb(benefit, kase, getSnapshots(benefit, kase, locality)),
+          stale: true,
+        });
+      }
+      return c.json(data);
+    }
+    // padła część: świeże wyniki zostają, padłe kody nadpisujemy danymi ze
+    // snapshotu (analogia do assemblePartialFromDb) — z flagą stale na odpowiedzi
+    const byCode = new Map(getSnapshots(benefit, kase, locality).map((s) => [s.code, s]));
+    return c.json({
+      ...data,
+      provinces: data.provinces.map((p) => {
+        const s = failed.has(p.code) ? byCode.get(p.code) : undefined;
+        return s
+          ? {
+              code: p.code,
+              name: p.name,
+              total: s.total,
+              records: (s.records as NfzRecord[]).map((r) => slimRecord(r)),
+            }
+          : p;
+      }),
+      stale: true,
+    });
   } catch (err) {
     noteNfzError(err);
     // awaria NFZ, a snapshoty są (choć stare) → lepsze to niż ściana błędu
@@ -361,7 +400,8 @@ app.get('/api/queues-province', limit(90), async (c) => {
   const province = (c.req.query('province') ?? '').trim();
   const kase = c.req.query('case') === '2' ? 2 : 1;
   const pages = intParam(c.req.query('pages'), 2, 1, 4);
-  const locality = cut((c.req.query('locality') ?? '').trim().toUpperCase(), 60);
+  // „KRAKOW" bez diakrytyków daje z NFZ 0 wyników — rozwiązujemy do kanonicznej nazwy
+  const locality = canonicalLocality(cut((c.req.query('locality') ?? '').trim().toUpperCase(), 60));
   if (benefit.length < 3 || !PROVINCES.some((p) => p.code === province)) {
     return c.json({ error: 'benefit (min. 3 znaki) i poprawny kod province wymagane' }, 400);
   }
@@ -515,7 +555,10 @@ app.get('/api/air', limit(20), async (c) => {
 app.get('/api/trend', async (c) => {
   const benefit = cut((c.req.query('benefit') ?? '').trim(), 120);
   const kase = c.req.query('case') === '2' ? 2 : 1;
-  const locality = cut((c.req.query('locality') ?? '').trim().toUpperCase(), 60);
+  // kanonizacja jak w /api/compare i /api/queues-province — snapshoty/historia
+  // zapisują się pod zkanonizowaną nazwą, więc surowa fraza dałaby pusty trend
+  // obok żywych wyników
+  const locality = canonicalLocality(cut((c.req.query('locality') ?? '').trim().toUpperCase(), 60));
   if (benefit.length < 3) return c.json({ error: 'benefit: min. 3 znaki' }, 400);
   const data = await cached(`trend:${benefit}:${kase}:${locality}`, 10 * 60 * 1000, async () => {
     const points = queueTrend(benefit, kase, locality);

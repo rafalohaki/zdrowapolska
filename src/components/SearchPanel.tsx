@@ -159,14 +159,18 @@ export function SearchPanel({
       e.preventDefault();
       setHighlight((h) => (h - 1 + items.length) % items.length);
     } else if (e.key === 'Enter') {
-      pick(highlight >= 0 ? items[highlight] : items[0]);
+      // jawnie wybrana podpowiedź idzie jak jest; bez highlight — zwykły submit
+      // (to samo co klik „Szukaj"), a nie items[0] — inaczej Enter i przycisk
+      // mogłyby uruchomić wyszukiwanie dwóch różnych świadczeń
+      if (highlight >= 0) pick(items[highlight]);
+      else void submit();
     } else if (e.key === 'Escape') {
       setOpen(false);
     }
   };
 
   return (
-    <div className={hero ? 'w-full max-w-3xl' : 'w-full'}>
+    <div className={hero ? 'w-full max-w-5xl' : 'w-full'}>
       <div ref={boxRef} className="relative">
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-[1fr_minmax(150px,190px)_minmax(150px,190px)_minmax(150px,170px)_auto]">
           <div className="relative">
@@ -211,8 +215,8 @@ export function SearchPanel({
               aria-controls="locality-listbox"
               aria-activedescendant={locHighlight >= 0 ? `locality-opt-${locHighlight}` : undefined}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !locOpen) {
-                  // Enter przy zamkniętej liście = „Szukaj"
+                if (e.key === 'Enter' && (!locOpen || !locItems.length)) {
+                  // Enter przy zamkniętej (albo otwartej, ale pustej) liście = „Szukaj"
                   void submit();
                   return;
                 }

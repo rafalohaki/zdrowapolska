@@ -216,6 +216,17 @@ export default function App() {
     void runSearch(benefit, next.kase, next.locality, next.province);
   };
 
+  // popularna fraza z EmptyState: zero wyników powstało zwykle przez filtr
+  // (miejscowość/województwo/dostępność) — samo podmienienie świadczenia
+  // odtworzyłoby pusty wynik i użytkownik kręciłby się w kółko
+  const searchHint = (benefit: string) => {
+    const next = { ...state, benefit, locality: '', province: 'all', a11y: [] as A11yKey[] };
+    setState(next);
+    syncUrl(next, modeRef.current, true);
+    setHistory(pushHistory(benefit, ''));
+    void runSearch(benefit, next.kase, '', 'all');
+  };
+
   /** Zmiana zakładki: wpis do historii (wstecz działa), tryb ląduje w URL. */
   const goMode = (m: AppMode) => {
     modeRef.current = m;
@@ -385,6 +396,16 @@ export default function App() {
     return d.length % 2 ? d[mid] : Math.round((d[mid - 1] + d[mid]) / 2);
   }, [facilities]);
 
+  // linia odniesienia w /compare („Mediana PL”) liczy się z PEŁNEGO zestawu —
+  // z mediany przefiltrowanej po województwie po kliknięciu słupka zrobiłaby się
+  // mediana jednego województwa podpisana jako krajowa
+  const medianAllDays = useMemo(() => {
+    const d = statsFacilities.map((f) => f.days).filter((x): x is number => x !== null).sort((a, b) => a - b);
+    if (d.length === 0) return null;
+    const mid = Math.floor(d.length / 2);
+    return d.length % 2 ? d[mid] : Math.round((d[mid - 1] + d[mid]) / 2);
+  }, [statsFacilities]);
+
   const started = Boolean(state.benefit) && (loading || provinces.length > 0 || error !== null);
 
   return (
@@ -449,7 +470,7 @@ export default function App() {
         ) : (
           <>
         {!started ? (
-          <section className="mx-auto flex max-w-3xl flex-col items-center px-4 pt-16 pb-10 text-center sm:pt-24">
+          <section className="mx-auto flex max-w-5xl flex-col items-center px-4 pt-16 pb-10 text-center sm:pt-24">
             <h1 className="text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white sm:text-5xl">
               Gdzie do <span className="text-brand-600">specjalisty</span> najszybciej?
             </h1>
@@ -527,7 +548,7 @@ export default function App() {
                     <>
                       {' · '}
                       <strong className="text-slate-700 dark:text-slate-200">
-                        mediana oczekiwania: {medianDays} dni
+                        mediana oczekiwania: {medianDays} {plural(medianDays, 'dzień', 'dni', 'dni')}
                       </strong>
                     </>
                   )}
@@ -566,16 +587,15 @@ export default function App() {
                     Eksport CSV
                   </button>
                 )}
-                <div className="flex rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-1 shadow-card" role="tablist" aria-label="Widok">
+                <div className="flex rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-1 shadow-card" role="group" aria-label="Widok">
                   {(['ranking', 'mapa', 'compare'] as const).map((v) => (
                     <button
                       key={v}
                       type="button"
-                      role="tab"
-                      aria-selected={state.view === v}
+                      aria-pressed={state.view === v}
                       onClick={() => update({ view: v })}
                       className={`rounded-lg px-4 py-1.5 text-sm font-medium transition ${
-                        state.view === v ? 'bg-brand-600 text-white' : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:text-white'
+                        state.view === v ? 'bg-brand-600 text-white' : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
                       }`}
                     >
                       {v === 'ranking' ? 'Ranking' : v === 'mapa' ? 'Mapa' : 'Porównanie'}
@@ -590,7 +610,7 @@ export default function App() {
                 <p className="rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-800 dark:border-brand-800 dark:bg-brand-900/30 dark:text-brand-200">
                   Pobieram statystyki z oddziałów NFZ — pierwsze wyniki pojawią się za chwilę
                   {targetsTotal > 1 && ', reszta dołączy progresywnie'} (powtórne wyszukiwania są
-                  błyskawiczne — dane trzymamy w własnej bazie)…
+                  błyskawiczne — dane trzymamy we własnej bazie)…
                 </p>
                 <ResultsSkeleton />
               </div>
@@ -631,7 +651,7 @@ export default function App() {
 
             {!loading && !error && targetsDone === targetsTotal && provinces.length > 0 && facilities.length === 0 && (
               <div className="mt-6">
-                <EmptyState onPickHint={search} />
+                <EmptyState onPickHint={searchHint} />
               </div>
             )}
 
@@ -662,12 +682,17 @@ export default function App() {
                       selected={state.province}
                       onSelect={(code) => update({ province: code ?? 'all' })}
                       loadingProgress={loading && targetsTotal > 1 ? `${targetsDone}/${targetsTotal} woj.` : undefined}
-                      reference={medianDays}
+                      reference={medianAllDays}
                     />
                   )}
                 </div>
                 <aside className="lg:sticky lg:top-20 lg:self-start">
-                  <AiPanel benefit={state.benefit} kase={state.kase} facilities={facilities} />
+                  <AiPanel
+                    benefit={state.benefit}
+                    kase={state.kase}
+                    facilities={facilities}
+                    datasetKey={`${state.benefit}|${state.kase}|${state.locality}|${state.province}|${state.a11y.join(',')}|${state.sort}`}
+                  />
                 </aside>
               </div>
             )}

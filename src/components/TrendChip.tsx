@@ -27,17 +27,25 @@ export function TrendChip({
 
   const W = 72;
   const H = 22;
+  // margines 1.15: przy serii płaskiej (max==total) linia nie klei się do górnej
+  // krawędzi, a szczytowy punkt nie przycina markera końcowego (r=2)
   const max = Math.max(...pts.map((p) => p.total), 1);
   const xy = pts.map(
-    (p, i) => [pts.length > 1 ? (i / (pts.length - 1)) * W : W / 2, H - (p.total / max) * (H - 3) - 1.5] as const,
+    (p, i) => [pts.length > 1 ? (i / (pts.length - 1)) * W : W / 2, H - (p.total / (max * 1.15)) * (H - 3) - 1.5] as const,
   );
   const up = (trend?.deltaTotal ?? 0) > 0;
   const hasDelta = trend?.deltaPct !== null && trend?.deltaPct !== undefined && pts.length > 1;
+  // „od 8 września" zamiast surowego ISO; T00:00:00 pinuje lokalną północ —
+  // gołe new Date('YYYY-MM-DD') parsuje się w UTC i user zachodnio od UTC
+  // widziałby dzień wcześniejszy
+  const fromLabel = trend?.from
+    ? new Date(`${trend.from}T00:00:00`).toLocaleDateString('pl-PL', { day: 'numeric', month: 'long' })
+    : null;
 
   return (
     <div
       className="mt-1 inline-flex items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-1 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400"
-      title={`Historia sumy oczekujących${trend?.from ? ` od ${trend.from}` : ''} — pomiar dzienny z synchronizacji NFZ`}
+      title={`Historia sumy oczekujących${fromLabel ? ` od ${fromLabel}` : ''} — pomiar dzienny z synchronizacji NFZ`}
     >
       <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} aria-hidden="true" className="shrink-0">
         {pts.length > 1 ? (
@@ -60,7 +68,7 @@ export function TrendChip({
       </svg>
       {hasDelta ? (
         trend!.deltaTotal === 0 ? (
-          <span>kolejka stabilna od {trend!.from}</span>
+          <span>kolejka stabilna od {fromLabel}</span>
         ) : (
           <span>
             kolejka {up ? 'rośnie' : 'maleje'}{' '}
@@ -68,7 +76,7 @@ export function TrendChip({
               {up ? '+' : ''}
               {trend!.deltaPct}%
             </strong>{' '}
-            od {trend!.from}
+            od {fromLabel}
           </span>
         )
       ) : (

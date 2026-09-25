@@ -59,7 +59,10 @@ export function DetailModal({ facility, onClose }: { facility: Facility; onClose
   const routeUrl =
     facility.lat !== null && facility.lon !== null
       ? `https://www.openstreetmap.org/directions?to=${facility.lat}%2C${facility.lon}`
-      : `https://www.openstreetmap.org/search?query=${encodeURIComponent(`${facility.address}, ${facility.locality}`)}`;
+      // filter(Boolean): puste locality/address nie zostawiają wiszącego „, "
+      : `https://www.openstreetmap.org/search?query=${encodeURIComponent(
+          [facility.address, facility.locality].filter(Boolean).join(', '),
+        )}`;
 
   return (
     <div
@@ -84,7 +87,7 @@ export function DetailModal({ facility, onClose }: { facility: Facility; onClose
             ref={closeRef}
             onClick={onClose}
             aria-label="Zamknij"
-            className="rounded-lg p-2 text-slate-400 dark:text-slate-500 transition hover:bg-slate-100 dark:hover:bg-slate-800 dark:bg-slate-800 hover:text-slate-700 dark:text-slate-200"
+            className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 dark:hover:text-slate-300"
           >
             <CloseIcon />
           </button>
@@ -105,7 +108,7 @@ export function DetailModal({ facility, onClose }: { facility: Facility; onClose
               <span>
                 {facility.address || '—'}
                 <br />
-                {facility.locality}, woj. {facility.provinceName}
+                {facility.locality && <>{facility.locality}, </>}woj. {facility.provinceName}
               </span>
             </dd>
           </div>

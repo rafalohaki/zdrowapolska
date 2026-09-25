@@ -177,15 +177,28 @@ export async function searchBenefits(query: string, limit = 25): Promise<SearchR
     }
   }
 
-  // 2) lokalna baza — porównanie po normalizacji (SQLite LIKE jest case-insensitive
-  // tylko dla ASCII: „łódź" nie trafiałoby w „ŁÓDŹ", „dentysta" w „STOMATOLOGICZNA")
-  const qn = normText(q);
-  const like = qn
-    ? allBenefits()
-        .filter((b) => normText(b).includes(qn))
-        .slice(0, limit)
-    : [];
+  // 2) lokalna baza — dopasowanie per-token: każdy token zapytania musi być
+  // prefiksem któregoś SŁOWA nazwy (SQLite LIKE jest case-insensitive tylko dla
+  // ASCII: „łódź" nie trafiałoby w „ŁÓDŹ", „dentysta" w „STOMATOLOGICZNA").
+  // Zwykły substring przez granice słów dawał śmieci („łódz" w „…MŁODZIEŻY…")
+  const tokens = normText(q).split(' ').filter(Boolean);
+  const wordHits = (words: string[], term: string) => words.some((w) => w.startsWith(term));
+  const nameMatches = (name: string, expandSynonyms: boolean) => {
+    const words = normText(name).split(' ');
+    return tokens.every((t) =>
+      wordHits(words, t) ||
+      (expandSynonyms && (SYNONYMS[t] ?? []).some((s) => wordHits(words, s))),
+    );
+  };
+  const like = tokens.length > 0 ? allBenefits().filter((b) => nameMatches(b, false)).slice(0, limit) : [];
   if (like.length > 0) return { items: like, source: 'sqlite' };
+
+  // 2b) 0 trafień → minimalna mapa synonimów („kardiologia" → „KARDIOLOG…"),
+  // żeby fallback SQLite nie był ślepy na potoczne nazwy — zanim uderzymy w żywy słownik NFZ
+  const viaSynonyms = tokens.some((t) => (SYNONYMS[t] ?? []).length > 0)
+    ? allBenefits().filter((b) => nameMatches(b, true)).slice(0, limit)
+    : [];
+  if (viaSynonyms.length > 0) return { items: viaSynonyms, source: 'sqlite' };
 
   // 3) żywy słownik NFZ
   const nfz = await getBenefits(q);

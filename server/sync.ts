@@ -114,7 +114,10 @@ export async function syncBenefits(): Promise<number> {
   return names.length;
 }
 
-export async function syncQueuesForBenefit(benefit: string, kase: 1 | 2 = 1): Promise<QueueChange[]> {
+export async function syncQueuesForBenefit(
+  benefit: string,
+  kase: 1 | 2 = 1,
+): Promise<{ changes: QueueChange[]; saved: number }> {
   // SYNC_PAGES=1 zapisywałby węższe snapshoty niż żywe zapytanie (domyślne
   // pages=2 w /api/compare) — ranking z bazy traciłby rekordy ze strony 2
   const compare = await getCompare(benefit, kase, Number(process.env.SYNC_PAGES ?? 2));
@@ -122,8 +125,10 @@ export async function syncQueuesForBenefit(benefit: string, kase: 1 | 2 = 1): Pr
   // serwowany z bazy jako "świeży" przez 24 h i zamrażał dziurę w wynikach
   const failed = new Set(compare.errors.map((e) => e.code));
   const changes: QueueChange[] = [];
+  let saved = 0;
   for (const p of compare.provinces) {
     if (failed.has(p.code)) continue;
+    saved++;
     const prev = getSnapshotOne(benefit, p.code, kase);
     saveSnapshot(benefit, p.code, kase, p.total, p.records);
     // alert przy istotnej zmianie: ≥15% i ≥10 osób — drobne wahania nie spamują webhooka
@@ -135,7 +140,7 @@ export async function syncQueuesForBenefit(benefit: string, kase: 1 | 2 = 1): Pr
     }
   }
   setSyncState('queues_synced_at', new Date().toISOString());
-  return changes;
+  return { changes, saved };
 }
 
 /** Synchronizacja kolejek dla świadczeń już śledzonych + popularnych, z limitem na cykl. */
@@ -153,12 +158,21 @@ export async function syncQueues(): Promise<number> {
     Number(process.env.SYNC_MAX_QUEUES_PER_RUN ?? 40),
   );
   let done = 0;
+  let savedTotal = 0;
   const changes: QueueChange[] = [];
   for (const benefit of queue) {
-    changes.push(...(await syncQueuesForBenefit(benefit)));
+    const res = await syncQueuesForBenefit(benefit);
+    changes.push(...res.changes);
+    savedTotal += res.saved;
     done++;
     status.progress = `kolejki ${done}/${queue.length}`;
     log(`${status.progress}: ${benefit}`);
+  }
+  // cykl, który nie zapisał NICZEGO, to padnięty NFZ, nie „sukces" — rzuć, by
+  // runSync przepchnął to przez catch: lastError, alert na Discordzie i retry
+  // za 45 min, zamiast cichego gnici snapshotów do następnego cyklu (12 h)
+  if (queue.length > 0 && savedTotal === 0) {
+    throw new Error(`sync kolejek: 0/${queue.length} świadczeń zapisanych — NFZ niedostępny?`);
   }
   if (changes.length > 0) {
     log(`wykryto ${changes.length} istotnych zmian kolejek → Discord`);
