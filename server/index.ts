@@ -764,6 +764,14 @@ const port = Number(process.env.PORT ?? 2363);
 
 console.log(`▶ zdrowapolska-backend nasłuchuje na 0.0.0.0:${port}`);
 startSyncScheduler();
+// Strażnik wdrożeń: Redis na wolumenie przeżywa rekreację kontenera — wpisy
+// air:* ze starego kształtu odpowiedzi muszą zniknąć przy nowym GIT_SHA
+void import('./cache')
+  .then((m) => m.guardDeployCache(process.env.GIT_SHA ?? 'unknown'))
+  .then((r) => {
+    if (r.purged > 0) console.log(`▶ cache: usunięto ${r.purged} wpisów air po nowym wdrożeniu (${r.mode})`);
+  })
+  .catch(() => undefined);
 // Prewarm listy stacji GIOŚ w tle (~20 stron z pacingiem) — pierwsze wejście
 // w zakładkę „Powietrze" nie czeka ~30 s na zimny cache
 void import('./air')

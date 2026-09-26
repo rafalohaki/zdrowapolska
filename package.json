@@ -13,8 +13,8 @@
     "test:e2e": "bunx playwright test",
     "typecheck": "tsc --noEmit",
     "deploy": "vite build && bunx wrangler deploy",
-    "docker:build": "docker compose build",
-    "docker:up": "docker compose up -d --build",
+    "docker:build": "GIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo unknown) BUILD_AT=$(date -u +%FT%TZ) docker compose build",
+    "docker:up": "GIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo unknown) BUILD_AT=$(date -u +%FT%TZ) docker compose up -d --build",
     "docker:logs": "docker compose logs -f",
     "prewarm": "bun scripts/prewarm-geocode.ts"
   },

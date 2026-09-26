@@ -140,6 +140,27 @@ export async function purgeKeys(prefix: string): Promise<number> {
   return removed;
 }
 
+/**
+ * Strażnik wdrożeń: Redis trzyma dane na wolumenie, więc przeżywa rekreację
+ * kontenera — wpisy zapisane przez POPRZEDNI wersję kodu (stary kształt
+ * odpowiedzi JSON) zatruwałyby nową aplikację do wygaśnięcia TTL. Przy starcie
+ * porównujemy zapisany GIT_SHA: inny (albo unknown — nie umiemy odróżnić
+ * wersji) → czyścimy przestrzeń wrażliwą na kształt (air:*) i zapamiętujemy sha.
+ */
+export async function guardDeployCache(currentSha: string): Promise<{ purged: number; mode: string }> {
+  const r = getRedis();
+  if (!r) return { purged: 0, mode: 'no-redis' };
+  try {
+    const stored = await r.get('deploy:gitSha');
+    if (stored === currentSha && currentSha !== 'unknown') return { purged: 0, mode: 'same' };
+    const purged = await purgeKeys('air:');
+    await r.set('deploy:gitSha', currentSha);
+    return { purged, mode: stored === null ? 'first-run' : currentSha === 'unknown' ? 'unknown-sha' : 'sha-changed' };
+  } catch {
+    return { purged: 0, mode: 'redis-error' };
+  }
+}
+
 // sweep pamięci co 5 min (chroni przed powolnym wzrostem przy długiej pracy)
 const sweep = setInterval(() => {
   const now = Date.now();
