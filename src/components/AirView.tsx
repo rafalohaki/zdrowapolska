@@ -47,6 +47,12 @@ type AirData = {
   alternatives?: AirAlternative[];
   sources?: AirSources;
   geoError?: boolean;
+  /** kategoria z pierwszego źródła, które ją zna (GIOŚ → czujniki → Airly) */
+  kategoriaEfektywna?: string | null;
+  /** skąd pochodzi kategoriaEfektywna */
+  zrodloKategorii?: 'gios' | 'community' | 'airly' | null;
+  /** fallback podmienił miejscową stację manualną na dalszą z żywym indeksem */
+  miejscowaStacjaManualna?: boolean;
 };
 
 const KAT_BG: Record<string, string> = {
@@ -109,12 +115,16 @@ function SourceRows({ community, airly }: { community: CommunityAir | null; airl
   );
 }
 
-type Suggestion = { id: number; name: string; city: string };
+type Suggestion = { id: number; name: string; city: string; brakNaZywo?: boolean };
 
-// błędy API pokazujemy po polsku — surowe „HTTP 500" wpadało do UI 1:1
+// błędy API pokazujemy po polsku — surowe „HTTP 500" wpadało do UI 1:1.
+// Status doklejony: loadStation NIE pogania 5xx w drugie pełne żądanie locality (d5b).
 async function apiError(res: Response): Promise<Error> {
   const body = (await res.json().catch(() => null)) as { error?: string } | null;
-  return new Error(body?.error ?? 'Nie udało się pobrać danych — spróbuj ponownie za chwilę.');
+  return Object.assign(
+    new Error(body?.error ?? 'Nie udało się pobrać danych — spróbuj ponownie za chwilę.'),
+    { status: res.status },
+  );
 }
 
 async function fetchAirStations(q: string, signal: AbortSignal): Promise<Suggestion[]> {
@@ -123,10 +133,11 @@ async function fetchAirStations(q: string, signal: AbortSignal): Promise<Suggest
   return ((await res.json()) as { items: Suggestion[] }).items ?? [];
 }
 
-// Twardy limit 20 s: zimna ścieżka serwera (GIOŚ 10 s/próba ×3 + geokoder 8 s +
-// Sensor.Community 12 s) potrafi trwać dłużej — szybszy, zrozumiały błąd zamiast
-// zawieszenia na skeletonach. Abort to UX, nie oszczędność upstreamu.
-const AIR_FETCH_TIMEOUT_MS = 20_000;
+// Twardy limit 45 s: zimna ścieżka serwera (GIOŚ 10 s/próba ×3 + geokoder 8 s +
+// Sensor.Community 12 s) potrafi trwać dłużej (mierzone ~35 s na zimnej frazie) —
+// 45 s wygrywa wyścig z serwerem zamiast kończyć się mylącym błędem pierwszemu
+// użytkownikowi; wciąż mieści się pod idleTimeout Buna (255 s). Abort to UX.
+const AIR_FETCH_TIMEOUT_MS = 45_000;
 
 /** user-signal + twardy timeout; AbortSignal.any/timeout nie istnieją w starszych
  *  Safari — wtedy fallback: bez timeoutu (gorzej bez komunikatu niż bez loadera). */
@@ -146,7 +157,8 @@ function isAbortLike(err: unknown): boolean {
 
 /** abort/timeout → czytelny polski komunikat z sugestią retry (nie surowy DOMException). */
 function airRequestError(err: unknown): Error {
-  if (isAbortLike(err)) return new Error('Serwer nie odpowiedział w 20 s — spróbuj ponownie za chwilę.');
+  if (isAbortLike(err))
+    return new Error(`Serwer nie odpowiedział w ${AIR_FETCH_TIMEOUT_MS / 1000} s — spróbuj ponownie za chwilę.`);
   return err instanceof Error ? err : new Error('Nie udało się pobrać danych — spróbuj ponownie za chwilę.');
 }
 
@@ -186,11 +198,17 @@ export function AirView() {
   const loadSeqRef = useRef(0);
   // kontroler AKTUALNEGO żądania — nowo zapytanie przerywa poprzednie (uzupełnia seq)
   const abortRef = useRef<AbortController | null>(null);
+  // ostatnie żądanie z pełnym kontekstem — „Spróbuj ponownie” je ponawia
+  // (podpowiedzi znikają przez setSuggestions([]), więc retry musi pamiętać tryb)
+  const lastRequestRef = useRef<
+    { kind: 'station'; st: Suggestion } | { kind: 'locality'; q: string } | null
+  >(null);
 
   const loadStation = (st: Suggestion) => {
     setShowSug(false);
     setSuggestions([]);
     pickedRef.current = st.name;
+    lastRequestRef.current = { kind: 'station', st };
     setPickedId(st.id);
     setQuery(st.name);
     setLoading(true);
@@ -201,11 +219,16 @@ export function AirView() {
     const seq = ++loadSeqRef.current;
     // stacja dokładna; gdy backend nie zna parametru station= albo id stacji jest
     // nieaktualne (odpowiedź 200 ze station:null) — fallback na miejscowość.
-    // Timeout/abort NIE przechodzi w fallback (młócenie drugi raz 20 s) — komunikat.
+    // Timeout/abort NIE przechodzi w fallback (młócenie drugi raz 45 s) — komunikat.
     fetchAirByStation(st.id, ctrl.signal)
       .then((d) => (d.station ? d : fetchAirByLocality(st.city, ctrl.signal)))
       .catch((err: unknown) => {
         if (isAbortLike(err)) throw err;
+        // 5xx z /api/air?station= (np. 502 GIOŚ) — drugie pełne żądanie locality
+        // tylko wydłuży czekanie; krótko pokaż banner z „Spróbuj ponownie”.
+        // 4xx i 200 ze station:null zachowują fallback na miejscowość.
+        const status = (err as { status?: number }).status;
+        if (status !== undefined && status >= 500) throw err;
         return fetchAirByLocality(st.city, ctrl.signal);
       })
       .then((d) => {
@@ -227,6 +250,7 @@ export function AirView() {
     setShowSug(false);
     setSuggestions([]);
     pickedRef.current = q;
+    lastRequestRef.current = { kind: 'locality', q };
     setPickedId(null);
     setLoading(true);
     setError(null);
@@ -244,6 +268,14 @@ export function AirView() {
       .finally(() => {
         if (loadSeqRef.current === seq) setLoading(false);
       });
+  };
+
+  // przycisk „Spróbuj ponownie” — ponawia ostatnie żądanie w oryginalnym trybie
+  const retryLast = () => {
+    const last = lastRequestRef.current;
+    if (!last) return;
+    if (last.kind === 'station') loadStation(last.st);
+    else loadLocality(last.q);
   };
 
   // domyślnie Kraków — pierwszy ekran z danymi bez klikania
@@ -378,6 +410,9 @@ export function AirView() {
                   }`}
                 >
                   {st.name}
+                  {st.brakNaZywo && (
+                    <span className="text-slate-400 dark:text-slate-500"> · brak danych na żywo</span>
+                  )}
                 </button>
               </li>
             ))}
@@ -386,16 +421,31 @@ export function AirView() {
       </div>
 
       {loading && (
-        <div className="mt-6 space-y-3" aria-busy="true">
+        <div className="mt-6 space-y-3" role="status" aria-live="polite" aria-busy="true">
+          {/* d5c: role/aria-live — senior/czytnik ekranu nie widzi 45 s „zamrożonej” strony */}
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            Pierwsze wyszukiwanie może potrwać do minuty — pobieramy dane z GIOŚ…
+          </p>
           <div className="h-24 animate-pulse rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900" />
           <div className="h-20 animate-pulse rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900" />
         </div>
       )}
 
       {!loading && error && (
-        <p className="mt-6 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
-          <AlertIcon className="h-5 w-5" /> {error}
-        </p>
+        <div className="mt-6 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+          <AlertIcon className="h-5 w-5 shrink-0" />
+          <span className="min-w-0 flex-1">{error}</span>
+          {/* d5d: retry pamięta kontekst (tryb stacja/miejscowość) — podpowiedzi już zniknęły */}
+          {lastRequestRef.current && (
+            <button
+              type="button"
+              onClick={retryLast}
+              className="shrink-0 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 transition hover:bg-amber-100 dark:border-amber-700 dark:bg-transparent dark:text-amber-100 dark:hover:bg-amber-900/60"
+            >
+              Spróbuj ponownie
+            </button>
+          )}
+        </div>
       )}
 
       {!loading && !error && data?.station && (
@@ -417,15 +467,31 @@ export function AirView() {
             </div>
           </div>
 
-          {data.kategoria && (
+          {/* d4: pigułka z kategorii efektywnej; podpis „indeks GIOŚ” tylko, gdy
+              kategoria pochodzi z indeksu — inaczej wskazujemy źródło szacunku */}
+          {(data.kategoria ?? data.kategoriaEfektywna) && (
             <div className="mt-4 flex flex-wrap items-center gap-3">
-              <span className={`rounded-xl px-4 py-2 text-lg font-bold ${katPill(data.kategoria)}`}>
-                {data.kategoria}
+              <span
+                className={`rounded-xl px-4 py-2 text-lg font-bold ${katPill(data.kategoria ?? data.kategoriaEfektywna ?? null)}`}
+              >
+                {data.kategoria ?? data.kategoriaEfektywna}
               </span>
-              <span className="text-sm text-slate-500 dark:text-slate-400">
-                indeks GIOŚ: {data.wartosc ?? '—'} · obliczono:{' '}
-                {data.dataObliczen?.slice(0, 16).replace('T', ' ')}
-              </span>
+              {data.kategoria ? (
+                <span className="text-sm text-slate-500 dark:text-slate-400">
+                  indeks GIOŚ: {data.wartosc ?? '—'} · obliczono:{' '}
+                  {data.dataObliczen?.slice(0, 16).replace('T', ' ')}
+                </span>
+              ) : (
+                <span className="text-sm text-slate-500 dark:text-slate-400">
+                  {data.zrodloKategorii === 'airly'
+                    ? 'szacunek z czujników Airly'
+                    : `szacunek z czujników obywatelskich${
+                        data.community?.nearestKm != null
+                          ? ` (najbliższy ~${data.community.nearestKm} km)`
+                          : ''
+                      }`}
+                </span>
+              )}
             </div>
           )}
 
@@ -437,7 +503,9 @@ export function AirView() {
             <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
               {pickedId !== null && data.station.id !== pickedId
                 ? `Wybrana stacja nie ma aktualnego indeksu — najbliższa stacja z danymi: ${data.station.name} (~${data.distanceKm} km).`
-                : `W tej miejscowości nie ma stacji GIOŚ — najbliższa stacja: ${data.station.name} (~${data.distanceKm} km).`}
+                : data.miejscowaStacjaManualna && pickedId === null
+                  ? `Stacja w tej miejscowości nie publikuje danych na żywo — najbliższa stacja z danymi: ${data.station.name} (~${data.distanceKm} km).`
+                  : `W tej miejscowości nie ma stacji GIOŚ — najbliższa stacja: ${data.station.name} (~${data.distanceKm} km).`}
             </p>
           )}
 

@@ -122,15 +122,31 @@ async function sourcesNear(refPoint: { lat: number; lon: number } | null): Promi
   };
 }
 
+/** Skąd pochodzi efektywna kategoria (UI pokazuje źródło obok pigułki): 'gios'
+ *  gdy indeks GIOŚ policzony, inaczej czujniki obywatelskie, inaczej Airly;
+ *  null gdy żadne źródło nie zna kategorii. */
+function zrodloDla(
+  eff: string | null,
+  giosKategoria: string | null,
+  communityKategoria: string | null,
+): 'gios' | 'community' | 'airly' | null {
+  if (eff === null) return null;
+  if (giosKategoria !== null) return 'gios';
+  return communityKategoria !== null ? 'community' : 'airly';
+}
+
 /** Indeks + porada dla KONKRETNEJ stacji (po id z autouzupełniania). */
 export async function airForStation(stationId: number): Promise<{
   station: GiosStation | null;
   kategoria: string | null;
+  kategoriaEfektywna: string | null;
+  zrodloKategorii: 'gios' | 'community' | 'airly' | null;
   wartosc: number | null;
   dataObliczen: string | null;
   dataZrodlowa: string | null;
   pollutants: AirPollutant[];
   advice: string;
+  alternatives: AirAlternative[];
   distanceKm: number | null;
   community: CommunityAir | null;
   airly: AirlyAir | null;
@@ -139,47 +155,105 @@ export async function airForStation(stationId: number): Promise<{
   const stations = await allStations();
   const station = stations.find((st) => st.id === stationId) ?? null;
   if (!station) {
-    return { station: null, kategoria: null, wartosc: null, dataObliczen: null, dataZrodlowa: null, pollutants: [], advice: 'Nie znaleziono stacji.', distanceKm: null, community: null, airly: null, sources: { gios: 'ok', community: 'empty', airly: 'off' } };
+    return { station: null, kategoria: null, kategoriaEfektywna: null, zrodloKategorii: null, wartosc: null, dataObliczen: null, dataZrodlowa: null, pollutants: [], advice: 'Nie znaleziono stacji.', alternatives: [], distanceKm: null, community: null, airly: null, sources: { gios: 'ok', community: 'empty', airly: 'off' } };
   }
   const refPoint =
     station.lat !== null && station.lon !== null ? { lat: station.lat, lon: station.lon } : null;
-  let a = await fetchStationIndex(stationId);
-  const { community, airly, probed } = await sourcesNear(refPoint);
+  // sondowania indeksu idą do `probed` — alternatives pokażą z nich, które
+  // pobliskie stacje mają żywe dane (zero dodatkowych wywołań; wzór: airForLocality)
+  const probed = new Map<number, Record<string, unknown>>();
+  const fetchIndexProbed = (id: number): Promise<Record<string, unknown>> =>
+    fetchStationIndex(id).then((idx) => {
+      probed.set(id, idx);
+      return idx;
+    });
+  let a = await fetchIndexProbed(stationId);
+  const { community, airly, probed: probeStatus } = await sourcesNear(refPoint);
   // to podstawowy flow UI (?station=): gdy stacja nie ma policzonego indeksu
   // (stacja manualna, np. Busko-Zdrój 756) i czujniki też nie znają kategorii —
   // podmień ją na najbliższą stację GIOŚ z żywym indeksem (≤3 próby, ≤80 km),
   // zamiast serwować martwą kartę
   let effectiveStation = station;
   let distanceKm = 0;
-  if (!a['Nazwa kategorii indeksu'] && !community?.kategoria && !airly?.kategoria && refPoint) {
+  if (!a['Nazwa kategorii indeksu'] && !communityLokalna(community) && !airly?.kategoria && refPoint) {
     const nearby = nearestStations(stations, refPoint.lat, refPoint.lon)
       .filter((c) => c.station.id !== station.id && c.distanceKm <= 80)
       .slice(0, 3);
     // tolerancyjnie: przejściowa awaria GIOŚ przy sondowaniu sąsiadów NIE odrzuca
     // już złożonej odpowiedzi ({} = „brak indeksu”, próbuj dalej); strict 502
     // zostaje dla pierwotnego indeksu stacji wyżej
-    const fb = await pickWithIndex(nearby, (id) => fetchStationIndex(id).catch(() => ({})));
+    const fb = await pickWithIndex(nearby, (id) => fetchIndexProbed(id).catch(() => ({})));
     if (fb) {
       effectiveStation = fb.station;
       distanceKm = Math.round(fb.distanceKm * 10) / 10;
       a = fb.index;
+      // dociągnij POZOSTAŁYCH pobliskich (≤2 dodatkowe wywołania), by alternatives
+      // pokazały, które jeszcze mają żywe dane (wzór: ścieżka locality). Pojedyncza
+      // awaria przy sondowaniu po prostu pomija stację.
+      for (const cand of nearby) {
+        if (probed.has(cand.station.id)) continue;
+        await fetchIndexProbed(cand.station.id).catch(() => undefined);
+      }
     }
   }
   const { kategoria, wartosc, dataObliczen, dataZrodlowa, pollutants } = parseAqIndex(a);
   // gdy GIOŚ nie ma indeksu dla stacji — porada z innych źródeł, nie „brak danych"
   const effectiveKategoria = kategoria ?? community?.kategoria ?? airly?.kategoria ?? null;
+  // alternatives jak w airForLocality: najpierw sondowani sąsiedzi z żywym indeksem
+  // (sortowani dystansem), potem pozostali pobliscy (≤80 km, bez znanego indeksu).
+  // Wykluczamy i stację efektywną, i pierwotnie wybraną — po podmianie stacja
+  // manualna (756) nie może wrócić jako klikalna alternatywa z dystansem ~0 km.
+  const distOf = (st: GiosStation): number | null =>
+    refPoint && st.lat !== null && st.lon !== null
+      ? Math.round(distKm(refPoint.lat, refPoint.lon, st.lat, st.lon) * 10) / 10
+      : null;
+  const withIndex: AirAlternative[] = [];
+  for (const [id, idx] of probed) {
+    if (id === effectiveStation.id || id === stationId || !idx['Nazwa kategorii indeksu']) continue;
+    const st = stations.find((s) => s.id === id);
+    if (!st) continue;
+    withIndex.push({
+      id: st.id,
+      name: st.name,
+      city: st.city,
+      kategoria: parseAqIndex(idx).kategoria,
+      distanceKm: distOf(st),
+    });
+  }
+  withIndex.sort((x, y) => (x.distanceKm ?? Infinity) - (y.distanceKm ?? Infinity));
+  const others: AirAlternative[] = refPoint
+    ? nearestStations(stations, refPoint.lat, refPoint.lon)
+        .filter(
+          (c) =>
+            c.station.id !== effectiveStation.id &&
+            c.station.id !== stationId &&
+            !withIndex.some((w) => w.id === c.station.id) &&
+            c.distanceKm <= 80,
+        )
+        .slice(0, 4)
+        .map((m) => ({
+          id: m.station.id,
+          name: m.station.name,
+          city: m.station.city,
+          kategoria: null,
+          distanceKm: distOf(m.station),
+        }))
+    : [];
   return {
     station: effectiveStation,
     kategoria,
+    kategoriaEfektywna: effectiveKategoria,
+    zrodloKategorii: zrodloDla(effectiveKategoria, kategoria, community?.kategoria ?? null),
     wartosc,
     dataObliczen,
     dataZrodlowa,
     pollutants,
     advice: adviceFor(effectiveKategoria),
+    alternatives: [...withIndex, ...others].slice(0, 3),
     distanceKm,
     community,
     airly,
-    sources: { gios: 'ok', ...probed },
+    sources: { gios: 'ok', ...probeStatus },
   };
 }
 
@@ -296,6 +370,17 @@ export type CommunityAir = {
 
 const SC_BASE = 'https://data.sensor.community/airrohr/v1';
 const SC_RADII_KM = [12, 25, 50] as const;
+/** Czujnik „lokalny” = w promieniu pierwszego sondowania. Kategoria z czujników
+ *  dalej niż 12 km (mediana z np. 36 km opisuje inne miejscowości) NIE powinna
+ *  blokować fallbacku na żywą stację GIOŚ; czujnik bez współrzędnych (nearestKm
+ *  null) też nie blokuje — nie wiemy, czy w ogóle dotyczy zapytanego punktu. */
+const COMMUNITY_LOCAL_KM = SC_RADII_KM[0];
+
+/** Czy kategoria z czujników obywatelskich liczy się jako lokalna (patrz COMMUNITY_LOCAL_KM). */
+function communityLokalna(c: CommunityAir | null): boolean {
+  return !!c?.kategoria && c.nearestKm !== null && c.nearestKm <= COMMUNITY_LOCAL_KM;
+}
+
 // limity cache komórki: surowe wiersze z area=50 km potrafią być MB per komórka
 // (Redis 128 MB allkeys-lru) — trzymamy tylko to, czego potrzebuje agregacja,
 // w ograniczonej liczbie i wieku
@@ -563,6 +648,11 @@ export function adviceFor(kategoria: string | null): string {
   return KATEGORIA_ADVICE[kategoria] ?? 'Sprawdź szczegóły jakości powietrza na stronie GIOŚ.';
 }
 
+/** Stacje, o które GIOŚ została co najmniej raz spytana i odpowiedziała 200 BEZ
+ *  policzonego indeksu (pomiar ręczny, np. Busko-Zdrój 756). Memo modułowe, wąskie
+ *  gardło wszystkich sondowań to fetchStationIndex — stąd jedno miejsce zapisu. */
+const stacjeManualne = new Set<number>();
+
 /**
  * Surowy obiekt indeksu dla stacji. {} = GIOŚ odpowiada, ale indeksu nie policzyła
  * (stacje manualne, np. Busko-Zdrój 756). Awaria upstreamu (GiosError po retryach)
@@ -572,7 +662,12 @@ async function fetchStationIndex(stationId: number): Promise<Record<string, unkn
   const idx = await Effect.runPromise(
     giosJson<{ AqIndex?: Record<string, unknown> }>(`/aqindex/getIndex/${stationId}`),
   );
-  return idx.AqIndex ?? {};
+  const aq = idx.AqIndex ?? {};
+  // memo (d3): HTTP-200 bez policzonego indeksu = stacja manualna (pomiar ręczny).
+  // Podpowiedzi i UI odnotują to bez kolejnych sondowań; awaria (GiosError) przelatuje
+  // wyżej i memo NIE oznacza — „nie wiemy” ≠ „manualna”.
+  if (!aq['Nazwa kategorii indeksu']) stacjeManualne.add(stationId);
+  return aq;
 }
 
 type ParsedIndex = {
@@ -607,9 +702,11 @@ function parseAqIndex(a: Record<string, unknown>): ParsedIndex {
   };
 }
 
-/** Stacje pasujące do miejscowości (do autouzupełniania) — z cache stacji. */
+/** Stacje pasujące do miejscowości (do autouzupełniania) — z cache stacji.
+ *  `brakNaZywo`: stacja manualna wg memo (HTTP-200 bez indeksu) — UI dopisuje
+ *  „· brak danych na żywo”. Brak wpisu = „jeszcze nie sprawdzono lub ma dane”. */
 export async function airStationsByLocality(localityRaw: string): Promise<
-  { id: number; name: string; city: string }[]
+  { id: number; name: string; city: string; brakNaZywo: boolean }[]
 > {
   const q = normCity(localityRaw);
   if (q.length < 3) return [];
@@ -627,7 +724,7 @@ export async function airStationsByLocality(localityRaw: string): Promise<
     .filter((st) => cityHit(st) || nameHit(st))
     .sort((a, b) => Number(cityHit(b)) - Number(cityHit(a)) || a.name.localeCompare(b.name, 'pl'))
     .slice(0, 8)
-    .map((st) => ({ id: st.id, name: st.name, city: st.city }));
+    .map((st) => ({ id: st.id, name: st.name, city: st.city, brakNaZywo: stacjeManualne.has(st.id) }));
 }
 
 export async function airForLocality(localityRaw: string): Promise<{
@@ -635,6 +732,11 @@ export async function airForLocality(localityRaw: string): Promise<{
   matches: { id: number; name: string; city: string }[];
   station: GiosStation | null;
   kategoria: string | null;
+  kategoriaEfektywna: string | null;
+  /** skąd kategoriaEfektywna — UI pokazuje źródło obok pigułki (d4) */
+  zrodloKategorii: 'gios' | 'community' | 'airly' | null;
+  /** true = fallback podmienił miejscową stację manualną na dalszą z żywym indeksem (d3) */
+  miejscowaStacjaManualna: boolean;
   wartosc: number | null;
   dataObliczen: string | null;
   dataZrodlowa: string | null;
@@ -731,7 +833,8 @@ export async function airForLocality(localityRaw: string): Promise<{
   // Busko-Zdrój 756 — jedyna w mieście) i czujniki obywatelskie/Airly też nie
   // znają kategorii — dociągnij najbliższe stacje GIOŚ z żywym indeksem
   // (≤3 próby, ≤80 km) i podmień station/distanceKm
-  if (!picked && station !== null && !community?.kategoria && !airly?.kategoria && refPoint) {
+  let miejscowaStacjaManualna = false;
+  if (!picked && station !== null && !communityLokalna(community) && !airly?.kategoria && refPoint) {
     const tried = new Set(candidates.map((c) => c.station.id));
     const nearby = nearestStations(stations, refPoint.lat, refPoint.lon)
       .filter((c) => !tried.has(c.station.id) && c.distanceKm <= 80)
@@ -744,6 +847,10 @@ export async function airForLocality(localityRaw: string): Promise<{
       station = fb.station;
       distanceKm = Math.round(fb.distanceKm * 10) / 10;
       a = fb.index;
+      // d3: podmieniona miejscowa stacja manualna — tylko gdy kandydaci pochodzili
+      // z dopasowania po nazwie/mieście (geo-fallback ma matches [] → to NIE jest
+      // „miejscowa” stacja, tylko po prostu najbliższa)
+      miejscowaStacjaManualna = matches.length > 0;
       // wzbogacenie alternatives: scan przerwał się na pierwszej stacji z indeksem,
       // więc dociągnij POZOSTAŁE pobliskie (≤2 dodatkowe wywołania), by alternatives
       // pokazały, które jeszcze mają żywe dane. Rzadka ścieżka (tylko fallback),
@@ -767,6 +874,9 @@ export async function airForLocality(localityRaw: string): Promise<{
       matches: [],
       station: null,
       kategoria: null,
+      kategoriaEfektywna: kat,
+      zrodloKategorii: zrodloDla(kat, null, community?.kategoria ?? null),
+      miejscowaStacjaManualna: false,
       wartosc: null,
       dataObliczen: null,
       dataZrodlowa: null,
@@ -823,6 +933,9 @@ export async function airForLocality(localityRaw: string): Promise<{
     matches: others,
     station,
     kategoria,
+    kategoriaEfektywna: effectiveKategoria,
+    zrodloKategorii: zrodloDla(effectiveKategoria, kategoria, community?.kategoria ?? null),
+    miejscowaStacjaManualna,
     wartosc,
     dataObliczen,
     dataZrodlowa,

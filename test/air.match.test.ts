@@ -10,9 +10,10 @@ delete process.env.MEILI_URL;
 // airly 'off' w tych testach (status deterministyczny, zero sieci)
 delete process.env.AIRLY_API_KEY;
 
-const { distKm, allStations, airForLocality, airForStation, airStationsByLocality, communityAirNear } =
+const { distKm, allStations, airForLocality, airForStation, airStationsByLocality, communityAirNear, adviceFor } =
   await import('../server/air');
 const { geocodeBatch, geocodeBatchWithStatus } = await import('../server/geocode');
+const { purgeKeys } = await import('../server/cache');
 
 // --- Fiksy stacji GIOŚ (kształt 1:1 z API, patrz toStation w server/air.ts) -----
 
@@ -68,6 +69,7 @@ const realFetch = globalThis.fetch;
 const indexCalls: number[] = [];
 const scCalls: string[] = [];
 const poisonedIds = new Set<number>(); // id stacji, których aqindex zwraca 503 (awaria GIOŚ)
+const once429Ids = new Set<number>(); // d7: id z „429 raz” — pierwsze wywołanie zwraca 429, kolejne 200 (reset per-test!)
 let scByRadius: Record<number, unknown> = {}; // odpowiedź SC per promień (brak wpisu = [])
 let nominatimStatus = 503;
 let photonStatus = 503;
@@ -86,6 +88,12 @@ function installFetchStub(): void {
       const id = Number(m[1]);
       indexCalls.push(id);
       if (poisonedIds.has(id)) return new Response('stub: GIOŚ 503 dla indeksu', { status: 503 });
+      // d7: „429 raz” — zużywamy flagę (wypisujemy id), więc kolejne wywołanie tego
+      // samego id dostaje już 200; retry w giosJson honoruje Retry-After
+      if (once429Ids.has(id)) {
+        once429Ids.delete(id);
+        return new Response('stub: GIOŚ 429 dla indeksu', { status: 429, headers: { 'Retry-After': '1' } });
+      }
       return json({ AqIndex: INDEXES[id] ?? idxNull });
     }
     if (url.includes('data.sensor.community')) {
@@ -156,6 +164,17 @@ describe('airForLocality — geo-fallback i „najbliższa z żywym indeksem”'
     expect(buskoAlt?.kategoria ?? null).toBeNull();
     // statusy: gios lista pobrana, czujniki sprawdzone i pusto, airly off (brak klucza)
     expect(res.sources).toEqual({ gios: 'ok', community: 'empty', airly: 'off' });
+    // d3: podmieniono MIEJSCOWĄ stację manualną (kandydat z dopasowania po mieście)
+    expect(res.miejscowaStacjaManualna).toBe(true);
+  });
+
+  test('podpowiedzi z adnotacją „brak na żywo”: 756 memoizowany po sondowaniu, 400 bez odznaki (d3)', async () => {
+    // zależne od kolejności: memo stacjeManualne wypełnia dopiero test wyżej (756 bez indeksu)
+    const busko = await airStationsByLocality('Busko');
+    expect(busko[0]?.id).toBe(BUSKO.id);
+    expect(busko[0]?.brakNaZywo).toBe(true);
+    const krk = await airStationsByLocality('Kraków');
+    expect(krk.every((i) => !i.brakNaZywo)).toBe(true);
   });
 
   test('Kraków: happy path r3 — dokładnie JEDNO sondowanie indeksu (400), bez fallbacku', async () => {
@@ -186,6 +205,14 @@ describe('airForStation — fallback stacji manualnej (?station=756)', () => {
     expect(res.kategoria).toBe('Dobry');
     expect(res.pollutants.map((p) => p.wskaznik)).toEqual(['PM10']);
     expect(res.sources.gios).toBe('ok');
+    // d2: alternatives — żywi sąsiedzi z sondowań, sortowani dystansem (400 przed 401)
+    expect(res.alternatives.map((a) => a.id)).toEqual([KRAKOW.id, KRAKOW2.id]);
+    expect(res.alternatives[0]).toMatchObject({
+      kategoria: 'Umiarkowany',
+      distanceKm: expectedKm(BUSKO, KRAKOW),
+    });
+    // po podmianie pierwotna stacja manualna NIE wraca jako klikalna alternatywa
+    expect(res.alternatives.some((a) => a.id === BUSKO.id)).toBe(false);
   });
 
   test('stacja z żywym indeksem NIE jest podmieniana (400 zostaje 400)', async () => {
@@ -195,6 +222,13 @@ describe('airForStation — fallback stacji manualnej (?station=756)', () => {
     expect(res.distanceKm).toBe(0);
     expect(res.kategoria).toBe('Umiarkowany');
     expect(indexCalls).toEqual([KRAKOW.id]); // brak sondowania sąsiadów
+    // d2: bez fallbacku alternatives to pozostali pobliscy (≤80 km) wg dystansu:
+    // 401 (~0,7 km), potem Solec (~62,4 km) i 756 (~62,8 km); Piotrków (~150 km)
+    // poza limitem. Solec z indeksem? Nie — w tej ścieżce nie sondowano go, więc
+    // kategoria null (żywe kategorie trafiają do alternatives tylko z sondowań).
+    expect(res.alternatives.map((a) => a.id)).toEqual([KRAKOW2.id, SOLEC.id, BUSKO.id]);
+    expect(res.alternatives[0]?.kategoria).toBeNull(); // indeksu 401 nie sondowano
+    expect(res.alternatives[0]?.distanceKm).toBe(expectedKm(KRAKOW, KRAKOW2));
   });
 });
 
@@ -225,6 +259,25 @@ describe('fallback odporny na przejściową awarię GIOŚ (fix recenzji: strict 
       poisonedIds.delete(SOLEC.id);
     }
   }, 20_000); // jw. — backoff GIOŚ w ścieżce odzysku
+});
+
+describe('giosJson honoruje Retry-After przy 429 (d7)', () => {
+  test('pierwsze sondowanie 400 → 429 z Retry-After: 1, ponowne podejście → „Umiarkowany”', async () => {
+    indexCalls.length = 0;
+    once429Ids.add(KRAKOW.id);
+    try {
+      const res = await airForLocality('Kraków');
+      expect(res.station?.id).toBe(KRAKOW.id);
+      expect(res.kategoria).toBe('Umiarkowany');
+      // 429 → czekaj wg Retry-After (1 s, wewnątrz semafora) → retry → 200
+      expect(indexCalls).toEqual([KRAKOW.id, KRAKOW.id]);
+      expect(res.sources.gios).toBe('ok');
+    } finally {
+      // flaga per-test: 400 bywa sondowany w testach wyżej — skumulowana flaga
+      // zużyłaby 429 za wcześnie i przewróciła cudze asercje
+      once429Ids.clear();
+    }
+  }, 20_000); // realnie ~3 s: sleep 1 s z Retry-After + backoff 2 s
 });
 
 describe('communityAirNear — adaptacyjny promień i agregacja po dokładnym punkcie', () => {
@@ -301,4 +354,79 @@ describe('geocode — rozróżnienie błędu od missu + zapasowy Photon', () => 
     const again = await geocodeBatchWithStatus(['Padla Wioska 13']);
     expect(again.error).toBe(true);
   }, 20_000);
+});
+
+// --- d1/d4: bramka dystansu czujników i pigułka kategorii ze źródłem --------------
+// WAŻNE: puste komórki airsc:50.5:20.6:{12,25,50} z testów Buska wyżej siedzą 2 min
+// w pamięci procesu (negativeTtl scRowsNear) — dlatego każdy test poniżej zaczyna
+// się od purgeKeys('airsc') (czyści pamięć i Redis), by stub SC był realnie odpytany.
+// Umiejscowienie na KOŃCU pliku chroni testy „odpornych na awarię” wyżej przed
+// odwrotnym zatruciem (one ustawiają scByRadius={}, ale czytają z pamięci).
+
+const scSensor = (id: number, lat: number, lon: number, p1: number, p2: number) => ({
+  sensor: { id },
+  sensordatavalues: [
+    { value_type: 'P1', value: String(p1) },
+    { value_type: 'P2', value: String(p2) },
+  ],
+  location: { latitude: String(lat), longitude: String(lon) },
+  timestamp: new Date().toISOString(),
+});
+// ~46 km od Buska — poza COMMUNITY_LOCAL_KM (12), w zasięgu eskalacji 50 km;
+// PM10 20 / PM2.5 12 → kategoria „Dobry” (scena produkcyjna Buska: czujniki daleko)
+const DALEKI_CZUJNIK = scSensor(900, 50.87, 20.58, 20, 12);
+// ~6,7 km od Buska — lokalny: jego kategoria słusznie tłumi fallback
+const LOKALNY_CZUJNIK = scSensor(901, 50.51, 20.62, 20, 12);
+
+describe('bramka dystansu czujników w fallbacku (d1) — kategoria z ≥12 km nie blokuje', () => {
+  test('czujnik ~46 km z kategorią: fallback podmienia 756 na Solec 20568 („Dobry”)', async () => {
+    await purgeKeys('airsc');
+    scByRadius = { 50: [DALEKI_CZUJNIK] };
+    const res = await airForLocality('Busko-Zdrój');
+    // szacunek JEST, ale z czujnika spoza progu lokalności — nie blokuje podmiany
+    expect(res.community?.kategoria).not.toBeNull();
+    expect(res.community?.nearestKm ?? 0).toBeGreaterThan(12);
+    expect(res.station?.id).toBe(SOLEC.id);
+    expect(res.kategoria).toBe('Dobry');
+    expect(res.zrodloKategorii).toBe('gios');
+    // podmieniono miejscową stację (kandydat z dopasowania po mieście)
+    expect(res.miejscowaStacjaManualna).toBe(true);
+  });
+
+  test('lokalny czujnik (~6,7 km): fallback stłumiony — zostaje 756 z kategorią null', async () => {
+    await purgeKeys('airsc');
+    scByRadius = { 12: [LOKALNY_CZUJNIK] };
+    const res = await airForLocality('Busko-Zdrój');
+    expect(res.station?.id).toBe(BUSKO.id);
+    expect(res.kategoria).toBeNull();
+    expect(res.community?.kategoria).not.toBeNull();
+    expect(res.community?.nearestKm ?? 99).toBeLessThanOrEqual(12);
+    // spójna pigułka (d4): efektywna kategoria z lokalnych czujników + wskazanie źródła
+    expect(res.kategoriaEfektywna).toBe(res.community?.kategoria ?? null);
+    expect(res.zrodloKategorii).toBe('community');
+    expect(res.advice).toBe(adviceFor(res.community?.kategoria ?? null));
+  });
+});
+
+describe('pigułka kategorii ze wskazaniem źródła (d4) — odpowiedź bez podmiany stacji', () => {
+  test('wszyscy sąsiedzi zatruceni (503): 756 zostaje, kategoriaEfektywna z czujników ≥12 km', async () => {
+    await purgeKeys('airsc');
+    scByRadius = { 50: [DALEKI_CZUJNIK] };
+    // nearby dla Buska to dokładnie SOLEC+KRAKOW+KRAKOW2 (sort wg dystansu, ≤80 km,
+    // slice 3) — jedno zatrucie nie wystarczy: zdrowy KRAKOW2 przejąłby fallback
+    poisonedIds.add(SOLEC.id);
+    poisonedIds.add(KRAKOW.id);
+    poisonedIds.add(KRAKOW2.id);
+    try {
+      const res = await airForLocality('Busko-Zdrój');
+      expect(res.station?.id).toBe(BUSKO.id); // wszyscy nearby zatruceni — bez podmiany
+      expect(res.kategoria).toBeNull();
+      expect(res.kategoriaEfektywna).toBe(res.community?.kategoria ?? null);
+      expect(res.zrodloKategorii).toBe('community');
+      expect(res.advice).toBe(adviceFor(res.community?.kategoria ?? null));
+      expect(res.miejscowaStacjaManualna).toBe(false); // fallback nie znalazł następcy
+    } finally {
+      poisonedIds.clear();
+    }
+  }, 30_000); // 3 zatrute sondowania × backoff GIOŚ (2 s + 4 s) ≈ 20 s — 30 s z zapasem
 });
