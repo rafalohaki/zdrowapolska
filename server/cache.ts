@@ -51,12 +51,16 @@ async function redisSet(key: string, value: string, ttlSeconds: number): Promise
 /**
  * Cache-first loader: Redis → pamięć → loader (z deduplikacją zapytań in-flight).
  * `shouldCache` pozwala pominąć zapis (np. puste wyniki wyszukiwania nie zatruwają cache'a).
+ * `negativeTtlMs`: wyniki odrzucone przez shouldCache trzymają się KRÓTKO (2–5 min)
+ * zamiast wcale — chroni upstream przed młóceniem przy każdym odświeżeniu karty,
+ * a niepełne dane nie zamierają na pełny ttlMs.
  */
 export async function cached<T>(
   key: string,
   ttlMs: number,
   loader: () => Promise<T>,
   shouldCache: (value: T) => boolean = () => true,
+  negativeTtlMs = 0,
 ): Promise<T> {
   const now = Date.now();
 
@@ -83,16 +87,22 @@ export async function cached<T>(
       return JSON.parse(raw) as T;
     }
     const value = await loader();
-    if (!shouldCache(value)) return value;
+    let storeTtlMs = ttlMs;
+    if (!shouldCache(value)) {
+      // „negatywy” (puste/niepełne wyniki): bez negativeTtlMs nie cache'ujemy
+      // wcale — z nim trzymają się krótko, by nie młócić upstreamu
+      if (negativeTtlMs <= 0) return value;
+      storeTtlMs = negativeTtlMs;
+    }
     const serialized = JSON.stringify(value);
-    memory.set(key, { value: serialized, expires: Date.now() + ttlMs });
+    memory.set(key, { value: serialized, expires: Date.now() + storeTtlMs });
     if (memory.size > 500) {
       // sprzątanie wygasłych wpisów pamięci
       for (const [k, v] of memory) if (v.expires < Date.now()) memory.delete(k);
       // twardy limit: gdy same żywe wpisy przekraczają 1000, wywalaj najstarsze (FIFO po Map)
       while (memory.size > 1000) memory.delete(memory.keys().next().value as string);
     }
-    await redisSet(key, serialized, Math.ceil(ttlMs / 1000));
+    await redisSet(key, serialized, Math.ceil(storeTtlMs / 1000));
     return value;
   })().finally(() => inflight.delete(key));
 

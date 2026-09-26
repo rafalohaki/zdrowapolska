@@ -9,9 +9,10 @@ type CommunityAir = {
   count: number;
   pm25: number | null;
   pm10: number | null;
-  nearestKm: number;
+  nearestKm: number | null;
   kategoria: string | null;
   measuredAt: string | null;
+  radiusKm: number;
 };
 type AirlyAir = {
   pm25: number | null;
@@ -19,6 +20,18 @@ type AirlyAir = {
   caqi: number | null;
   kategoria: string | null;
   level: string | null;
+};
+type AirAlternative = {
+  id: number;
+  name: string;
+  city: string;
+  kategoria: string | null;
+  distanceKm: number | null;
+};
+type AirSources = {
+  gios: 'ok' | 'error';
+  community: 'ok' | 'empty' | 'error';
+  airly: 'off' | 'ok' | 'error';
 };
 type AirData = {
   station: AirStation | null;
@@ -30,6 +43,10 @@ type AirData = {
   distanceKm: number | null;
   community: CommunityAir | null;
   airly: AirlyAir | null;
+  // pola nowszych backendów — opcjonalne, by nie wywalać UI na starszej odpowiedzi
+  alternatives?: AirAlternative[];
+  sources?: AirSources;
+  geoError?: boolean;
 };
 
 const KAT_BG: Record<string, string> = {
@@ -71,8 +88,9 @@ function SourceRows({ community, airly }: { community: CommunityAir | null; airl
           <span className="text-slate-500 dark:text-slate-400">
             — PM2.5: <strong>{community.pm25 ?? '—'}</strong> µg/m³, PM10:{' '}
             <strong>{community.pm10 ?? '—'}</strong> µg/m³ · {community.count}{' '}
-            {plural(community.count, 'czujnik', 'czujniki', 'czujników')} w 12 km
-            {community.nearestKm > 0 && ` (najbliższy ~${community.nearestKm} km)`}
+            {plural(community.count, 'czujnik', 'czujniki', 'czujników')} w {community.radiusKm} km
+            {community.nearestKm !== null && community.nearestKm > 0 &&
+              ` (najbliższy ~${community.nearestKm} km)`}
           </span>
         </li>
       )}
@@ -105,15 +123,46 @@ async function fetchAirStations(q: string, signal: AbortSignal): Promise<Suggest
   return ((await res.json()) as { items: Suggestion[] }).items ?? [];
 }
 
-async function fetchAirByStation(id: number): Promise<AirData> {
-  const res = await fetch(`${API_BASE}/api/air?station=${id}`);
+// Twardy limit 20 s: zimna ścieżka serwera (GIOŚ 10 s/próba ×3 + geokoder 8 s +
+// Sensor.Community 12 s) potrafi trwać dłużej — szybszy, zrozumiały błąd zamiast
+// zawieszenia na skeletonach. Abort to UX, nie oszczędność upstreamu.
+const AIR_FETCH_TIMEOUT_MS = 20_000;
+
+/** user-signal + twardy timeout; AbortSignal.any/timeout nie istnieją w starszych
+ *  Safari — wtedy fallback: bez timeoutu (gorzej bez komunikatu niż bez loadera). */
+function combineSignals(user: AbortSignal | undefined, timeoutMs: number): AbortSignal | undefined {
+  try {
+    const timeout = AbortSignal.timeout(timeoutMs);
+    if (user && typeof AbortSignal.any === 'function') return AbortSignal.any([user, timeout]);
+    return user ?? timeout;
+  } catch {
+    return user;
+  }
+}
+
+function isAbortLike(err: unknown): boolean {
+  return err instanceof DOMException && (err.name === 'AbortError' || err.name === 'TimeoutError');
+}
+
+/** abort/timeout → czytelny polski komunikat z sugestią retry (nie surowy DOMException). */
+function airRequestError(err: unknown): Error {
+  if (isAbortLike(err)) return new Error('Serwer nie odpowiedział w 20 s — spróbuj ponownie za chwilę.');
+  return err instanceof Error ? err : new Error('Nie udało się pobrać danych — spróbuj ponownie za chwilę.');
+}
+
+async function fetchAirByStation(id: number, signal?: AbortSignal): Promise<AirData> {
+  const res = await fetch(`${API_BASE}/api/air?station=${id}`, {
+    signal: combineSignals(signal, AIR_FETCH_TIMEOUT_MS),
+  });
   if (!res.ok) throw await apiError(res);
   return (await res.json()) as AirData;
 }
 
 /** Fallback: wyszukiwanie po miejscowości — dla backendów bez obsługi station=. */
-async function fetchAirByLocality(loc: string): Promise<AirData> {
-  const res = await fetch(`${API_BASE}/api/air?locality=${encodeURIComponent(loc)}`);
+async function fetchAirByLocality(loc: string, signal?: AbortSignal): Promise<AirData> {
+  const res = await fetch(`${API_BASE}/api/air?locality=${encodeURIComponent(loc)}`, {
+    signal: combineSignals(signal, AIR_FETCH_TIMEOUT_MS),
+  });
   if (!res.ok) throw await apiError(res);
   return (await res.json()) as AirData;
 }
@@ -126,30 +175,44 @@ export function AirView() {
   const [data, setData] = useState<AirData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // id stacji wybranej z podpowiedzi (null przy szukaniu po miejscowości) —
+  // pozwala odróżnić „stacja spoza miejscowości” od „wybrana stacja bez danych,
+  // backend podmienił na najbliższą z indeksem”
+  const [pickedId, setPickedId] = useState<number | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   // nazwa właśnie wybranej stacji (nie jest nowym zapytaniem autouzupełniania)
   const pickedRef = useRef<string | null>(null);
   // numer ostatniego żądania — spóźniona odpowiedź nie nadpisze nowszej
   const loadSeqRef = useRef(0);
+  // kontroler AKTUALNEGO żądania — nowo zapytanie przerywa poprzednie (uzupełnia seq)
+  const abortRef = useRef<AbortController | null>(null);
 
   const loadStation = (st: Suggestion) => {
     setShowSug(false);
     setSuggestions([]);
     pickedRef.current = st.name;
+    setPickedId(st.id);
     setQuery(st.name);
     setLoading(true);
     setError(null);
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
     const seq = ++loadSeqRef.current;
     // stacja dokładna; gdy backend nie zna parametru station= albo id stacji jest
-    // nieaktualne (odpowiedź 200 ze station:null) — fallback na miejscowość
-    fetchAirByStation(st.id)
-      .then((d) => (d.station ? d : fetchAirByLocality(st.city)))
-      .catch(() => fetchAirByLocality(st.city))
+    // nieaktualne (odpowiedź 200 ze station:null) — fallback na miejscowość.
+    // Timeout/abort NIE przechodzi w fallback (młócenie drugi raz 20 s) — komunikat.
+    fetchAirByStation(st.id, ctrl.signal)
+      .then((d) => (d.station ? d : fetchAirByLocality(st.city, ctrl.signal)))
+      .catch((err: unknown) => {
+        if (isAbortLike(err)) throw err;
+        return fetchAirByLocality(st.city, ctrl.signal);
+      })
       .then((d) => {
         if (loadSeqRef.current === seq) setData(d);
       })
       .catch((err: unknown) => {
-        if (loadSeqRef.current === seq) setError(err instanceof Error ? err.message : 'Nieznany błąd');
+        if (loadSeqRef.current === seq) setError(airRequestError(err).message);
       })
       .finally(() => {
         if (loadSeqRef.current === seq) setLoading(false);
@@ -164,15 +227,19 @@ export function AirView() {
     setShowSug(false);
     setSuggestions([]);
     pickedRef.current = q;
+    setPickedId(null);
     setLoading(true);
     setError(null);
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
     const seq = ++loadSeqRef.current;
-    fetchAirByLocality(q)
+    fetchAirByLocality(q, ctrl.signal)
       .then((d) => {
         if (loadSeqRef.current === seq) setData(d);
       })
       .catch((err: unknown) => {
-        if (loadSeqRef.current === seq) setError(err instanceof Error ? err.message : 'Nieznany błąd');
+        if (loadSeqRef.current === seq) setError(airRequestError(err).message);
       })
       .finally(() => {
         if (loadSeqRef.current === seq) setLoading(false);
@@ -223,7 +290,7 @@ export function AirView() {
       </h1>
       <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
         Oficjalny indeks jakości powietrza GIOŚ dla Twojej miejscowości + rekomendacja treningowa.
-        Dane odświeżane co godzinę.
+        Dane odświeżane co ~30 minut.
       </p>
 
       <div
@@ -366,10 +433,53 @@ export function AirView() {
             <strong>Trening:</strong> {data.advice}
           </div>
 
-          {data.distanceKm !== null && data.distanceKm > 1 && (
+          {data.distanceKm !== null && data.distanceKm > 1 && data.station && (
             <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
-              W tej miejscowości nie ma stacji GIOŚ — pokazuję najbliższą (~{data.distanceKm} km).
+              {pickedId !== null && data.station.id !== pickedId
+                ? `Wybrana stacja nie ma aktualnego indeksu — najbliższa stacja z danymi: ${data.station.name} (~${data.distanceKm} km).`
+                : `W tej miejscowości nie ma stacji GIOŚ — najbliższa stacja: ${data.station.name} (~${data.distanceKm} km).`}
             </p>
+          )}
+
+          {/* uczciwy stan braku danych: stacja jest, ale nie publikuje indeksu na żywo */}
+          {!data.kategoria && data.pollutants.length === 0 && (
+            <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+              {data.community || data.airly
+                ? 'Ta stacja nie publikuje danych na żywo (pomiar ręczny — wyniki po 4–8 tyg.) — poniżej pomiary czujników w okolicy.'
+                : 'Ta stacja nie publikuje danych na żywo (pomiar ręczny — wyniki po 4–8 tyg.).'}
+            </p>
+          )}
+
+          {data.alternatives && data.alternatives.length > 0 && (
+            <div className="mt-4 border-t border-slate-100 pt-4 dark:border-slate-800">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                Inne stacje w okolicy
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {data.alternatives.map((alt) => (
+                  <button
+                    key={alt.id}
+                    type="button"
+                    onClick={() => loadStation({ id: alt.id, name: alt.name, city: alt.city })}
+                    title={`${alt.name} — sprawdź jakość powietrza`}
+                    className="inline-flex max-w-full items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-600 transition hover:border-brand-300 hover:bg-brand-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-brand-900/30"
+                  >
+                    <span className={`h-2 w-2 shrink-0 rounded-full ${katDot(alt.kategoria)}`} />
+                    <span className="truncate font-medium text-slate-700 dark:text-slate-200">
+                      {alt.name}
+                    </span>
+                    {alt.distanceKm !== null && (
+                      <span className="shrink-0 text-slate-400 dark:text-slate-500">~{alt.distanceKm} km</span>
+                    )}
+                    {alt.kategoria && (
+                      <span className={`shrink-0 rounded-full px-2 py-0.5 font-medium ${katPill(alt.kategoria)}`}>
+                        {alt.kategoria}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
 
           {data.pollutants.length > 0 && (
@@ -428,10 +538,39 @@ export function AirView() {
           <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
             Brak pomiarów dla tej miejscowości
           </p>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            GIOŚ nie ma tu stacji i w okolicy nie ma czujników obywatelskich — spróbuj większej
-            miejscowości w pobliżu (np. Kraków, Warszawa).
-          </p>
+          {data.geoError ? (
+            <p className="mt-1 text-sm text-amber-700 dark:text-amber-300">
+              Geokodowanie chwilowo niedostępne — spróbuj za chwilę.
+            </p>
+          ) : (
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              GIOŚ nie ma tu stacji i w okolicy nie ma czujników obywatelskich — spróbuj większej
+              miejscowości w pobliżu (np. Kraków, Warszawa).
+            </p>
+          )}
+          {/* uczciwie: co sprawdzono — gios 'ok' znaczy „lista stacji pobrana”,
+              NIE „wybrana stacja ma indeks” */}
+          {data.sources && (
+            <p className="mt-3 text-xs text-slate-400 dark:text-slate-500">
+              Sprawdzone źródła: stacje GIOŚ{' '}
+              {data.sources.gios === 'ok' ? '— lista pobrana' : '— nieosiągalne'}; czujniki
+              obywatelskie{' '}
+              {data.sources.community === 'ok'
+                ? '— są dane'
+                : data.sources.community === 'empty'
+                  ? '— sprawdzone, brak czujników'
+                  : '— nie odpowiedziały'}
+              ; Airly{' '}
+              {data.sources.airly === 'off'
+                ? '— wyłączone (brak klucza API)'
+                : data.sources.airly === 'ok'
+                  ? '— są dane'
+                  : data.sources.airly === 'error'
+                    ? '— nie odpowiedziały'
+                    : '— brak danych'}
+              .
+            </p>
+          )}
         </div>
       )}
     </section>

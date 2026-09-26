@@ -30,7 +30,8 @@ import { GSL_CATEGORIES, gslFacilities, type GslCategory } from './gsl';
 import { canonicalLocality, getGslSnapshot, likeLocalities, saveGslSnapshot } from './db';
 import { getConnInfo } from 'hono/bun';
 
-const app = new Hono();
+// Variables: znaczniki przekazywane z handlerów do middleware (po next())
+const app = new Hono<{ Variables: { /** odpowiedź /api/air bez pomiarów — nie cache'ować w przeglądarce/CF */ airNoStore?: boolean } }>();
 
 /** Liczba z query z clampem — Number('abc') = NaN psułoby limity, klucze cache'i treść zapytań. */
 function intParam(raw: string | undefined, def: number, min: number, max: number): number {
@@ -84,7 +85,14 @@ app.use('/api/*', async (c, next) => {
   ) {
     c.header('Cache-Control', 'public, max-age=300');
   } else if (path.startsWith('/api/air')) {
-    c.header('Cache-Control', 'public, max-age=900, stale-while-revalidate=300');
+    // odpowiedzi bez pomiarów (handler ustawia znacznik airNoStore) nie mogą
+    // wisieć w przeglądarce/CF — serwer chroni upstream krótkim ujemnym TTL,
+    // więc odświeżenie karty jest tanie; pełne dane dostają krótkie max-age
+    if (c.get('airNoStore')) {
+      c.header('Cache-Control', 'no-store');
+    } else {
+      c.header('Cache-Control', 'public, max-age=300, stale-while-revalidate=300');
+    }
   } else {
     c.header('Cache-Control', 'no-store');
   }
@@ -92,7 +100,14 @@ app.use('/api/*', async (c, next) => {
 
 app.onError((err, c) => {
   console.error('[api]', err);
-  return c.json({ error: err.message ?? 'Błąd serwera' }, 500);
+  // awaria GIOŚ to problem upstreamu, nie nasz — 502 z czytelnym komunikatem,
+  // jak przy GSL niżej (wzorzec: handlers → { error }, 502)
+  if ((err as { _tag?: string })._tag === 'GiosError') {
+    return c.json({ error: 'Serwis GIOŚ nie odpowiada — spróbuj ponownie za chwilę.' }, 502);
+  }
+  // Data.TaggedError ma message='' — `'' ?? '…'` zwraca '' (?? łapie tylko
+  // null/undefined), więc klient dostawał {"error":""}; `||` domyka fallback
+  return c.json({ error: err.message || 'Błąd serwera' }, 500);
 });
 
 // --- Rate limiter per IP (okno 60 s) -----------------------------------------
@@ -153,7 +168,18 @@ function noteNfzError(err: unknown): void {
 }
 
 app.get('/api/health', (c) =>
-  c.json({ ok: true, service: 'zdrowapolska-backend', cache: cacheStats(), db: dbStats() }),
+  c.json({
+    ok: true,
+    service: 'zdrowapolska-backend',
+    // wersja obrazu (build-args z Dockerfile/compose) — deploy weryfikuje po niej
+    // świeżość; null gdy serwer stoi poza obrazem (dev)
+    version: {
+      gitSha: process.env.GIT_SHA ?? null,
+      buildAt: process.env.BUILD_AT ?? null,
+    },
+    cache: cacheStats(),
+    db: dbStats(),
+  }),
 );
 
 // Wyszukiwarka świadczeń (Meilisearch z synonimami i literówkami; fallbacki: SQLite → NFZ)
@@ -505,13 +531,61 @@ app.get('/api/facilities', limit(30), async (c) => {
 });
 
 
+/**
+ * Wartościowa odpowiedź /api/air: kategoria indeksu, jakiekolwiek wskaźniki albo
+ * czujniki w okolicy. Sama obecność stacji NIE wystarcza — stacje manualne bez
+ * policzonego indeksu (np. Busko-Zdrój 756) nie mogą zamarzać w cache na 30 min.
+ */
+function airResponseHasData(r: {
+  kategoria: string | null;
+  pollutants: unknown[];
+  community: unknown;
+  airly: unknown;
+}): boolean {
+  return r.kategoria !== null || r.pollutants.length > 0 || r.community !== null || r.airly !== null;
+}
+
+/** Odpowiedź z awarią źródła (gios/community/airly 'error') albo padłym geokoderem
+ *  to stan PRZEJŚCIOWY — nie może utknąć w cache (30 min / 3 min negativeTtl),
+ *  bo następne zapytania dostawałyby zamarznięte „źródło nie odpowiedziało”. */
+function airSourceFailed(r: {
+  sources?: { gios?: string; community?: string; airly?: string };
+  geoError?: boolean;
+}): boolean {
+  const s = r.sources;
+  return (
+    r.geoError === true || !s || s.gios === 'error' || s.community === 'error' || s.airly === 'error'
+  );
+}
+
+function airCacheable(r: {
+  kategoria: string | null;
+  pollutants: unknown[];
+  community: unknown;
+  airly: unknown;
+  sources?: { gios?: string; community?: string; airly?: string };
+  geoError?: boolean;
+}): boolean {
+  return airResponseHasData(r) && !airSourceFailed(r);
+}
+
+/** Niepełne odpowiedzi air trzymamy KRÓTKO zamiast wcale — kolejne odświeżenia
+ *  karty nie młócą GIOŚ (sondowania stacji potrafią trwać dziesiątki sekund),
+ *  a dane nie zamierają na pół godziny. */
+const AIR_NEGATIVE_TTL_MS = 3 * 60 * 1000;
+
 // Autouzupełnianie miast dla widoku powietrza (z cache stacji, bez NFZ/GIOŚ w locie)
 app.get('/api/air-stations', limit(20), async (c) => {
   const locality = cut((c.req.query('locality') ?? '').trim(), 60);
   if (locality.length < 3) return c.json({ items: [] });
   const { airStationsByLocality } = await import('./air');
-  const items = await cached(`air-stations:${locality.toLowerCase()}`, 60 * 60 * 1000, () =>
-    airStationsByLocality(locality),
+  // puste podpowiedzi nie mogą mrozić się na godzinę (domknięte localities
+  // wrzucałyby puste items do Redisa na 60 min)
+  const items = await cached(
+    `air-stations:${locality.toLowerCase()}`,
+    60 * 60 * 1000,
+    () => airStationsByLocality(locality),
+    (items) => items.length > 0,
   );
   return c.json({ items });
 });
@@ -527,27 +601,32 @@ app.get('/api/air', limit(20), async (c) => {
   }
   const { airForLocality, airForStation } = await import('./air');
   if (stationId > 0) {
-    // jak przy locality: nietrafione id stacji nie zatruwają cache'a na 30 min
+    // wartościowa odpowiedź = stacja z danymi i bez awarii źródeł (airCacheable);
+    // nietrafione id i odpowiedzi bez pomiarów trzymają się krótko (negativeTtl)
     const data = await cached(
       `air:station:${stationId}`,
       30 * 60 * 1000,
       () => airForStation(stationId),
-      (r) => r.station !== null,
+      airCacheable,
+      AIR_NEGATIVE_TTL_MS,
     );
+    if (!airCacheable(data)) c.set('airNoStore', true);
     return c.json(data);
   }
   if (locality.length < 3) {
     return c.json({ error: 'Podaj miejscowość (min. 3 znaki)' }, 400);
   }
-  // trafienia cache'ujemy 30 min; nietrafione zapytania nie mogą zatruwać cache'a
-  // (ani dowolny wpisany string nie może na pół godziny zamrażać odpowiedzi).
-  // Wartościowa odpowiedź = stacja GIOŚ LUB jakiekolwiek czujniki w okolicy.
+  // trafienia cache'ujemy 30 min; niepełne odpowiedzi (brak stacji z danymi,
+  // brak czujników) trzymają się krótko — dowolny wpisany string nie może
+  // na pół godziny zamrażać odpowiedzi, ale też nie może młócić GIOŚ co klik
   const data = await cached(
     `air:locality:${locality.toLowerCase()}`,
     30 * 60 * 1000,
     () => airForLocality(locality),
-    (r) => r.station !== null || r.community !== null || r.airly !== null,
+    airCacheable,
+    AIR_NEGATIVE_TTL_MS,
   );
+  if (!airCacheable(data)) c.set('airNoStore', true);
   return c.json(data);
 });
 

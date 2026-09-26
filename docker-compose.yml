@@ -2,7 +2,12 @@
 # + Redis (hot cache) + Meilisearch (wyszukiwarka świadczeń z literówkami/synonimami)
 services:
   backend:
-    build: .
+    build:
+      context: .
+      # wersja obrazu do /api/health — bez args pola GIT_SHA/BUILD_AT byłyby puste
+      args:
+        GIT_SHA: ${GIT_SHA:-unknown}
+        BUILD_AT: ${BUILD_AT:-unknown}
     container_name: zdrowapolska-backend
     ports:
       - "2363:2363"

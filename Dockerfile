@@ -11,6 +11,12 @@ COPY server ./server
 COPY src/lib ./src/lib
 
 ENV NODE_ENV=production
+# Wersja obrazu — /api/health wystawia GIT_SHA/BUILD_AT, deploy weryfikuje po nich
+# świeżość (compose przekazuje build-args; bez nich pola są puste w health)
+ARG GIT_SHA=unknown
+ARG BUILD_AT=unknown
+ENV GIT_SHA=${GIT_SHA} \
+    BUILD_AT=${BUILD_AT}
 RUN mkdir -p /app/data
 EXPOSE 2363
 

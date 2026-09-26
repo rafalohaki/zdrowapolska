@@ -9,6 +9,7 @@ import { Data, Effect, Semaphore } from 'effect';
 import { db } from './db';
 
 const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
+const PHOTON_URL = 'https://photon.komoot.io/api'; // zapasowy geokoder OSM — bez klucza
 const USER_AGENT =
   process.env.NOMINATIM_USER_AGENT ??
   'ZdrowaPolska/1.0 (hackathon; https://github.com/rafalohaki/zdrowapolska)';
@@ -53,6 +54,12 @@ function dbSave(address: string, point: { lat: number; lon: number } | null): vo
 
 type NomiHit = { lat: string; lon: string; importance?: number };
 
+/** Wynik jednego providera: punkt albo definitywny brak (error=false),
+ *  lub awaria upstreamu (error=true) — błąd NIE jest „nie znaleziono”. */
+type GeoOutcome =
+  | { point: { lat: number; lon: number } | null; error: false }
+  | { point: null; error: true };
+
 function nominatimEffect(address: string) {
   return Effect.gen(function* () {
     // GSL daje adresy typu "ul.Wrocławska 1-3, 30-901 Kraków-Krowodrza" — normalizuj
@@ -79,27 +86,81 @@ function nominatimEffect(address: string) {
       catch: (cause) => new GeoError({ cause: String(cause) }),
     })) as NomiHit[];
     const hit = hits[0];
-    if (!hit) return null;
-    return { lat: Number(hit.lat), lon: Number(hit.lon) };
+    if (!hit) return { point: null, error: false } as GeoOutcome;
+    return { point: { lat: Number(hit.lat), lon: Number(hit.lon) }, error: false } as GeoOutcome;
   }).pipe(
     Effect.retry({ times: 1, while: (e) => e._tag === 'GeoError' }),
     // 'error' ≠ null: przejściowa awaria Nominatima nie może truć cache'a jako
     // 30-dniowy „nie znaleziono" — miss zapisujemy tylko dla faktycznego braku
-    Effect.catch(() => Effect.succeed('error' as const)),
+    Effect.catch(() => Effect.succeed({ point: null, error: true } as GeoOutcome)),
   );
+}
+
+type PhotonResponse = {
+  features?: {
+    geometry?: { coordinates?: number[] };
+    properties?: { country?: string };
+  }[];
+};
+
+/** Zapasowy geokoder Photon (OSM, bez klucza) — ten sam semafor/pacing i kształt wyniku. */
+function photonEffect(address: string) {
+  return Effect.gen(function* () {
+    const q = address.replace(/^ul\.|^al\.|^os\./i, '').trim();
+    const params = new URLSearchParams({ q: `${q}, Polska`, limit: '1', lang: 'pl' });
+    const res = yield* semaphore.withPermits(1)(
+      Effect.tryPromise({
+        try: (signal) =>
+          fetch(`${PHOTON_URL}?${params}`, {
+            headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+            signal: AbortSignal.any([signal, AbortSignal.timeout(8000)]),
+          }),
+        catch: (cause) => new GeoError({ cause: String(cause) }),
+      }).pipe(Effect.tap(() => Effect.sleep('1 second'))), // kulturalny pacing jak u Nominatima
+    );
+    if (!res.ok) return yield* Effect.fail(new GeoError({ cause: `HTTP ${res.status}` }));
+    const j = (yield* Effect.tryPromise({
+      try: () => res.json() as Promise<PhotonResponse>,
+      catch: (cause) => new GeoError({ cause: String(cause) }),
+    })) as PhotonResponse;
+    const features = j.features ?? [];
+    // Photon nie ma countrycodes — filtruj po kraju, a gdy brak adnotacji weź 1. wynik
+    const hit =
+      features.find((f) => f.properties?.country === 'Polska' || f.properties?.country === 'Poland') ??
+      features[0];
+    const coords = hit?.geometry?.coordinates;
+    if (!coords || coords.length < 2 || !Number.isFinite(Number(coords[0])) || !Number.isFinite(Number(coords[1]))) {
+      return { point: null, error: false } as GeoOutcome;
+    }
+    // GeoJSON: [lon, lat]
+    return { point: { lat: Number(coords[1]), lon: Number(coords[0]) }, error: false } as GeoOutcome;
+  }).pipe(
+    // fallback i tak już ratuje sytuację — bez dodatkowych podejść
+    Effect.catch(() => Effect.succeed({ point: null, error: true } as GeoOutcome)),
+  );
+}
+
+/** Świeże geokodowanie z łańcuchem providerów: Nominatim → Photon (przy AWARII,
+ *  nie przy misse). Definitywny miss pierwszego providera kończy łańcuch. */
+async function geocodeFresh(address: string): Promise<GeoOutcome> {
+  const nomi = await Effect.runPromise(nominatimEffect(address));
+  if (!nomi.error) return nomi;
+  return Effect.runPromise(photonEffect(address));
 }
 
 export type GeoResult = { address: string; lat: number; lon: number } | null;
 
+export type GeoBatchWithStatus = { results: (GeoResult | null)[]; error: boolean };
+
 /**
- * Geokoduje batch adresów (cache-first; max 20 na zapytanie).
- * Zwraca JEDEN wynik na każdy adres wejściowy — deduplikacja służy tylko
- * ograniczeniu pracy; pytanie o duplikaty nie zaburza indeksowania odpowiedzi.
- * NULL = nie znaleziono (zapisane, nie pytamy ponownie przez MISS_TTL_MS).
+ * Geokoduje batch adresów (cache-first; max 20 na zapytanie) i RÓŻNICUJE stany:
+ * error=true znaczy „geokodowanie chwilowo niedostępne” (oba providery padły),
+ * a results z nullami przy error=false to faktyczne „nie znaleziono” (cache'owane).
  */
-export async function geocodeBatch(addresses: string[]): Promise<(GeoResult | null)[]> {
+export async function geocodeBatchWithStatus(addresses: string[]): Promise<GeoBatchWithStatus> {
   const inputs = addresses.map((a) => a.trim()).filter(Boolean).slice(0, 20);
   const resolved = new Map<string, GeoResult | null>();
+  let error = false;
   for (const address of new Set(inputs)) {
     const hit = dbLookup(address);
     if (hit && hit !== 'miss') {
@@ -110,14 +171,26 @@ export async function geocodeBatch(addresses: string[]): Promise<(GeoResult | nu
       resolved.set(address, null);
       continue;
     }
-    const point = await Effect.runPromise(nominatimEffect(address));
-    if (point === 'error') {
-      // błąd sieciowy/HTTP — nie zapisuj miss, zapytamy ponownie następnym razem
+    const outcome = await geocodeFresh(address);
+    if (outcome.error) {
+      // błąd sieciowy/HTTP obu providerów — nie zapisuj miss, zapytamy ponownie
+      error = true;
       resolved.set(address, null);
       continue;
     }
-    dbSave(address, point);
-    resolved.set(address, point ? { address, lat: point.lat, lon: point.lon } : null);
+    dbSave(address, outcome.point);
+    resolved.set(address, outcome.point ? { address, ...outcome.point } : null);
   }
-  return inputs.map((a) => resolved.get(a) ?? null);
+  return { results: inputs.map((a) => resolved.get(a) ?? null), error };
+}
+
+/**
+ * Geokoduje batch adresów (cache-first; max 20 na zapytanie).
+ * Zwraca JEDEN wynik na każdy adres wejściowy — deduplikacja służy tylko
+ * ograniczeniu pracy; pytanie o duplikaty nie zaburza indeksowania odpowiedzi.
+ * NULL = nie znaleziono (zapisane, nie pytamy ponownie przez MISS_TTL_MS) LUB
+ * chwilowa awaria providerów (niecache'owana) — do rozróżnienia służy geocodeBatchWithStatus.
+ */
+export async function geocodeBatch(addresses: string[]): Promise<(GeoResult | null)[]> {
+  return (await geocodeBatchWithStatus(addresses)).results;
 }

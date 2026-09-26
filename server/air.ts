@@ -7,7 +7,7 @@
 
 import { Data, Effect, Semaphore, Schedule } from 'effect';
 import { cached } from './cache';
-import { geocodeBatch } from './geocode';
+import { geocodeBatchWithStatus, type GeoResult } from './geocode';
 
 const BASE = 'https://api.gios.gov.pl/pjp-api/v1/rest';
 
@@ -28,13 +28,26 @@ function giosJson<T>(path: string) {
           }),
         catch: (cause) => new GiosError({ cause: String(cause) }),
       });
-      if (!res.ok) return yield* Effect.fail(new GiosError({ cause: `GIOŚ ${res.status} dla ${path}` }));
+      if (!res.ok) {
+        // 429 = GIOŚ nas dławi (potwierdzona ściana 429 już przy tempie >1 req/s):
+        // honoruj nagłówek Retry-After (sekundy; bez nagłówka 5 s, cap 20 s).
+        // Sleep trwa w semaforze, więc i pozostałe żądania odczekają zamiast
+        // dokładać wolumenu do dławiącego upstreamu.
+        if (res.status === 429) {
+          const ra = Number(res.headers.get('Retry-After'));
+          const waitS = Number.isFinite(ra) && ra > 0 ? Math.min(ra, 20) : 5;
+          yield* Effect.sleep(`${waitS} seconds`);
+        }
+        return yield* Effect.fail(new GiosError({ cause: `GIOŚ ${res.status} dla ${path}` }));
+      }
       return yield* Effect.tryPromise({
         try: () => res.json() as Promise<T>,
         catch: (cause) => new GiosError({ cause: String(cause) }),
       });
     }).pipe(
-      Effect.retry({ times: 2, schedule: Schedule.spaced('2 seconds') }),
+      // wykładniczy backoff (2 s → 4 s) zamiast stałego — kolejne podejścia
+      // coraz rzadziej, mniej wolumenu na dławiący upstream
+      Effect.retry({ times: 2, schedule: Schedule.exponential('2 seconds', 2) }),
     ),
   );
 }
@@ -70,17 +83,43 @@ function toStation(raw: RawStation): GiosStation | null {
 
 let stationsCache: { at: number; list: GiosStation[] } | null = null;
 
-/** Pomiary okoliczne (czujniki obywatelskie + Airly) wokół punktu odniesienia. */
+/** Statusy źródeł do uczciwego UI: co sprawdzono, a co nie odpowiedziało.
+ *  gios 'ok' znaczy „lista stacji pobrana”, NIE „wybrana stacja ma indeks”. */
+export type AirSources = {
+  gios: 'ok' | 'error';
+  community: 'ok' | 'empty' | 'error';
+  airly: 'off' | 'ok' | 'error'; // 'off' = brak klucza AIRLY_API_KEY
+};
+
+/** Pomiary okoliczne (czujniki obywatelskie + Airly) wokół punktu odniesienia.
+ *  Błędy źródeł NIE są cicho zamieniane na null — status wraca w body /api/air. */
 async function sourcesNear(refPoint: { lat: number; lon: number } | null): Promise<{
   community: CommunityAir | null;
   airly: AirlyAir | null;
+  probed: { community: AirSources['community']; airly: AirSources['airly'] };
 }> {
-  if (!refPoint) return { community: null, airly: null };
-  const [community, airly] = await Promise.all([
-    communityAirNear(refPoint.lat, refPoint.lon).catch(() => null),
-    airlyNear(refPoint.lat, refPoint.lon).catch(() => null),
+  if (!refPoint) {
+    // brak współrzędnych (geokoder padł/ nie znaleziono) — nie udajemy „sprawdzone”
+    return { community: null, airly: null, probed: { community: 'empty', airly: 'off' } };
+  }
+  const airlyKey = !!process.env.AIRLY_API_KEY;
+  const [communityRes, airlyRes] = await Promise.all([
+    communityAirNear(refPoint.lat, refPoint.lon).then(
+      (c): { c: CommunityAir | null; st: AirSources['community'] } => ({ c, st: c ? 'ok' : 'empty' }),
+      (): { c: CommunityAir | null; st: AirSources['community'] } => ({ c: null, st: 'error' }),
+    ),
+    airlyKey
+      ? airlyNear(refPoint.lat, refPoint.lon).then(
+          (a): { a: AirlyAir | null; st: AirSources['airly'] } => ({ a, st: 'ok' }),
+          (): { a: AirlyAir | null; st: AirSources['airly'] } => ({ a: null, st: 'error' }),
+        )
+      : Promise.resolve({ a: null, st: 'off' as const }),
   ]);
-  return { community, airly };
+  return {
+    community: communityRes.c,
+    airly: airlyRes.a,
+    probed: { community: communityRes.st, airly: airlyRes.st },
+  };
 }
 
 /** Indeks + porada dla KONKRETNEJ stacji (po id z autouzupełniania). */
@@ -95,30 +134,52 @@ export async function airForStation(stationId: number): Promise<{
   distanceKm: number | null;
   community: CommunityAir | null;
   airly: AirlyAir | null;
+  sources: AirSources;
 }> {
   const stations = await allStations();
   const station = stations.find((st) => st.id === stationId) ?? null;
   if (!station) {
-    return { station: null, kategoria: null, wartosc: null, dataObliczen: null, dataZrodlowa: null, pollutants: [], advice: 'Nie znaleziono stacji.', distanceKm: null, community: null, airly: null };
+    return { station: null, kategoria: null, wartosc: null, dataObliczen: null, dataZrodlowa: null, pollutants: [], advice: 'Nie znaleziono stacji.', distanceKm: null, community: null, airly: null, sources: { gios: 'ok', community: 'empty', airly: 'off' } };
   }
-  const a = await fetchStationIndex(stationId);
-  const { kategoria, wartosc, dataObliczen, dataZrodlowa, pollutants } = parseAqIndex(a);
   const refPoint =
     station.lat !== null && station.lon !== null ? { lat: station.lat, lon: station.lon } : null;
-  const { community, airly } = await sourcesNear(refPoint);
+  let a = await fetchStationIndex(stationId);
+  const { community, airly, probed } = await sourcesNear(refPoint);
+  // to podstawowy flow UI (?station=): gdy stacja nie ma policzonego indeksu
+  // (stacja manualna, np. Busko-Zdrój 756) i czujniki też nie znają kategorii —
+  // podmień ją na najbliższą stację GIOŚ z żywym indeksem (≤3 próby, ≤80 km),
+  // zamiast serwować martwą kartę
+  let effectiveStation = station;
+  let distanceKm = 0;
+  if (!a['Nazwa kategorii indeksu'] && !community?.kategoria && !airly?.kategoria && refPoint) {
+    const nearby = nearestStations(stations, refPoint.lat, refPoint.lon)
+      .filter((c) => c.station.id !== station.id && c.distanceKm <= 80)
+      .slice(0, 3);
+    // tolerancyjnie: przejściowa awaria GIOŚ przy sondowaniu sąsiadów NIE odrzuca
+    // już złożonej odpowiedzi ({} = „brak indeksu”, próbuj dalej); strict 502
+    // zostaje dla pierwotnego indeksu stacji wyżej
+    const fb = await pickWithIndex(nearby, (id) => fetchStationIndex(id).catch(() => ({})));
+    if (fb) {
+      effectiveStation = fb.station;
+      distanceKm = Math.round(fb.distanceKm * 10) / 10;
+      a = fb.index;
+    }
+  }
+  const { kategoria, wartosc, dataObliczen, dataZrodlowa, pollutants } = parseAqIndex(a);
   // gdy GIOŚ nie ma indeksu dla stacji — porada z innych źródeł, nie „brak danych"
   const effectiveKategoria = kategoria ?? community?.kategoria ?? airly?.kategoria ?? null;
   return {
-    station,
+    station: effectiveStation,
     kategoria,
     wartosc,
     dataObliczen,
     dataZrodlowa,
     pollutants,
     advice: adviceFor(effectiveKategoria),
-    distanceKm: 0,
+    distanceKm,
     community,
     airly,
+    sources: { gios: 'ok', ...probed },
   };
 }
 
@@ -225,34 +286,52 @@ export type CommunityAir = {
   count: number;
   pm25: number | null; // mediana µg/m³
   pm10: number | null;
-  nearestKm: number;
+  /** odległość najbliższego czujnika od DOKŁADNEGO punktu zapytania (null gdy czujnik bez współrzędnych) */
+  nearestKm: number | null;
   kategoria: string | null;
   measuredAt: string | null;
+  /** promień faktycznie przeszukany — małe miejscowości wymagają eskalacji 12→25→50 km */
+  radiusKm: number;
 };
 
 const SC_BASE = 'https://data.sensor.community/airrohr/v1';
+const SC_RADII_KM = [12, 25, 50] as const;
+// limity cache komórki: surowe wiersze z area=50 km potrafią być MB per komórka
+// (Redis 128 MB allkeys-lru) — trzymamy tylko to, czego potrzebuje agregacja,
+// w ograniczonej liczbie i wieku
+const SC_MAX_ROWS = 500;
+const SC_MAX_ROW_AGE_MS = 24 * 60 * 60 * 1000;
 
-/** Czujniki PM (SDS011 itp.) w promieniu ~12 km — mediana P1/P2 + najbliższy dystans. */
-export async function communityAirNear(lat: number, lon: number): Promise<CommunityAir | null> {
-  // klucz per ~0.1° — obce miejscowości w okolicy dzielą cache
-  const key = `airsc:${lat.toFixed(1)}:${lon.toFixed(1)}`;
+/** Minimalny wiersz czujnika — wystarczający do agregacji mediany i dystansu. */
+type ScRow = {
+  sid: number;
+  lat: number | null;
+  lon: number | null;
+  pm25: number | null;
+  pm10: number | null;
+  ts: string | null;
+};
+
+/** Minimalne wiersze czujników SC dla komórki ~0,1° i promienia (cache Redis/pamięć).
+ *  Puste komórki trzymają się bardzo krótko (negativeTtl); błąd HTTP NIE trafia
+ *  do cache — źródło odróżnia „sprawdzone i pusto” od „nie odpowiedziało”. */
+async function scRowsNear(lat: number, lon: number, radiusKm: number): Promise<ScRow[]> {
+  // klucz per ~0.1° + promień — obce miejscowości w okolicy dzielą cache
+  const key = `airsc:${lat.toFixed(1)}:${lon.toFixed(1)}:${radiusKm}`;
   return cached(
     key,
     15 * 60 * 1000,
     async () => {
-      const res = await fetch(`${SC_BASE}/filter/area=${lat.toFixed(4)},${lon.toFixed(4)},12`, {
+      const res = await fetch(`${SC_BASE}/filter/area=${lat.toFixed(4)},${lon.toFixed(4)},${radiusKm}`, {
         signal: AbortSignal.timeout(12_000),
         headers: { 'User-Agent': 'ZdrowaPolska/1.0 (hackathon)' },
       });
-      if (!res.ok) return null;
+      if (!res.ok) throw new Error(`Sensor.Community HTTP ${res.status}`);
       const rows = (await res.json()) as Record<string, unknown>[];
-      if (!Array.isArray(rows)) return null;
+      if (!Array.isArray(rows)) throw new Error('Sensor.Community: nieoczekiwany format odpowiedzi');
 
+      const parsed: ScRow[] = [];
       const seen = new Set<number>();
-      const pm25s: number[] = [];
-      const pm10s: number[] = [];
-      let nearestKm = Infinity;
-      let measuredAt: string | null = null;
       for (const s of rows) {
         const sensor = s['sensor'] as Record<string, unknown> | undefined;
         const sid = typeof sensor?.['id'] === 'number' ? (sensor['id'] as number) : null;
@@ -272,31 +351,67 @@ export async function communityAirNear(lat: number, lon: number): Promise<Commun
         const loc = s['location'] as Record<string, unknown> | undefined;
         const slat = Number(loc?.['latitude']);
         const slon = Number(loc?.['longitude']);
-        if (Number.isFinite(slat) && Number.isFinite(slon)) {
-          nearestKm = Math.min(nearestKm, distKm(lat, lon, slat, slon));
-        }
-        if (pm25 !== null) pm25s.push(pm25);
-        if (pm10 !== null) pm10s.push(pm10);
-        const ts = typeof s['timestamp'] === 'string' ? (s['timestamp'] as string) : null;
-        if (ts && (!measuredAt || ts > measuredAt)) measuredAt = ts;
+        parsed.push({
+          sid,
+          lat: Number.isFinite(slat) ? slat : null,
+          lon: Number.isFinite(slon) ? slon : null,
+          pm25,
+          pm10,
+          ts: typeof s['timestamp'] === 'string' ? (s['timestamp'] as string) : null,
+        });
       }
-      if (seen.size === 0) return null;
-      const m25 = median(pm25s);
-      const m10 = median(pm10s);
-      return {
-        count: seen.size,
-        pm25: m25 !== null ? Math.round(m25 * 10) / 10 : null,
-        pm10: m10 !== null ? Math.round(m10 * 10) / 10 : null,
-        nearestKm: Number.isFinite(nearestKm) ? Math.round(nearestKm * 10) / 10 : 0,
-        kategoria: worstCategory([
-          m25 !== null ? pmCategory('PM25', m25) : null,
-          m10 !== null ? pmCategory('PM10', m10) : null,
-        ]),
-        measuredAt,
-      };
+      if (parsed.length === 0) return [];
+      // limit wieku (stary pomiar nie jest wiarygodny)…
+      const fresh = parsed.filter((r) => r.ts === null || Date.now() - Date.parse(r.ts) < SC_MAX_ROW_AGE_MS);
+      // …i liczby wierszy (najświeższe wygrywają)
+      return fresh.length > SC_MAX_ROWS
+        ? fresh
+            .sort((a, b) => (b.ts ?? '').localeCompare(a.ts ?? '') || a.sid - b.sid)
+            .slice(0, SC_MAX_ROWS)
+        : fresh;
     },
-    (r) => r !== null,
+    (rows) => rows.length > 0,
+    2 * 60 * 1000,
   );
+}
+
+/** Czujniki PM (SDS011 itp.) wokół punktu — eskalacja promienia 12→25→50 km, gdy
+ *  mała miejscowość nie ma czujników blisko (area 12 i 25 km bywają puste).
+ *  Agregacja (mediana + najbliższy dystans) liczona względem DOKŁADNEGO punktu
+ *  zapytania, POZA cache (cache trzyma wiersze względem komórki ~0,1°).
+ *  Rzuca przy błędzie źródła; null = sprawdzono (do 50 km) i nie ma czujników z PM. */
+export async function communityAirNear(lat: number, lon: number): Promise<CommunityAir | null> {
+  for (const radiusKm of SC_RADII_KM) {
+    const rows = await scRowsNear(lat, lon, radiusKm);
+    if (rows.length === 0) continue;
+    const pm25s: number[] = [];
+    const pm10s: number[] = [];
+    let nearestKm = Infinity;
+    let measuredAt: string | null = null;
+    for (const r of rows) {
+      if (r.pm25 !== null) pm25s.push(r.pm25);
+      if (r.pm10 !== null) pm10s.push(r.pm10);
+      if (r.lat !== null && r.lon !== null) {
+        nearestKm = Math.min(nearestKm, distKm(lat, lon, r.lat, r.lon));
+      }
+      if (r.ts && (!measuredAt || r.ts > measuredAt)) measuredAt = r.ts;
+    }
+    const m25 = median(pm25s);
+    const m10 = median(pm10s);
+    return {
+      count: rows.length,
+      pm25: m25 !== null ? Math.round(m25 * 10) / 10 : null,
+      pm10: m10 !== null ? Math.round(m10 * 10) / 10 : null,
+      nearestKm: Number.isFinite(nearestKm) ? Math.round(nearestKm * 10) / 10 : null,
+      kategoria: worstCategory([
+        m25 !== null ? pmCategory('PM25', m25) : null,
+        m10 !== null ? pmCategory('PM10', m10) : null,
+      ]),
+      measuredAt,
+      radiusKm,
+    };
+  }
+  return null;
 }
 
 // --- Airly (czujniki partnerskie, m.in. na paczkomatach InPost) ---------------
@@ -318,7 +433,8 @@ const AIRLY_LEVEL_TO_KAT: Record<string, string> = {
   EXTREME: 'Bardzo zły',
 };
 
-/** Najbliższy punkt pomiarowy Airly (do 3 km). Wymaga AIRLY_API_KEY — bez klucza pomijamy. */
+/** Najbliższy punkt pomiarowy Airly (do 10 km). Wymaga AIRLY_API_KEY — bez klucza
+ *  pomijamy (status 'off'). Błąd HTTP rzuca — sourcesNear odróżni awarię od pusto. */
 export async function airlyNear(lat: number, lon: number): Promise<AirlyAir | null> {
   const key = process.env.AIRLY_API_KEY;
   if (!key) return null;
@@ -327,13 +443,13 @@ export async function airlyNear(lat: number, lon: number): Promise<AirlyAir | nu
     15 * 60 * 1000,
     async () => {
       const res = await fetch(
-        `https://airapi.airly.com/v2/measurements/nearest?lat=${lat.toFixed(5)}&lng=${lon.toFixed(5)}&maxDistanceKM=3`,
+        `https://airapi.airly.com/v2/measurements/nearest?lat=${lat.toFixed(5)}&lng=${lon.toFixed(5)}&maxDistanceKM=10`,
         {
           headers: { Accept: 'application/json', apikey: key },
           signal: AbortSignal.timeout(10_000),
         },
       );
-      if (!res.ok) return null;
+      if (!res.ok) throw new Error(`Airly HTTP ${res.status}`);
       const j = (await res.json()) as {
         current?: {
           values?: { name?: string; value?: number }[];
@@ -362,20 +478,62 @@ export async function airlyNear(lat: number, lon: number): Promise<AirlyAir | nu
   );
 }
 
+/** Stacje GIOŚ posortowane wg odległości od punktu (uogólnienie nearestStation —
+ *  fallback „najbliższa stacja z żywym indeksem” bierze z tej listy kolejnych kandydatów). */
+export function nearestStations(
+  stations: GiosStation[],
+  lat: number,
+  lon: number,
+  limit?: number,
+): { station: GiosStation; distanceKm: number }[] {
+  const ranked = stations
+    .filter((st) => st.lat !== null && st.lon !== null)
+    .map((st) => ({ station: st, distanceKm: distKm(lat, lon, st.lat!, st.lon!) }))
+    .sort((a, b) => a.distanceKm - b.distanceKm);
+  return typeof limit === 'number' ? ranked.slice(0, limit) : ranked;
+}
+
 /** Stacja GIOŚ najbliższa punktu (gdy miejscowość nie ma własnej stacji). */
 export function nearestStation(
   stations: GiosStation[],
   lat: number,
   lon: number,
 ): { station: GiosStation; distanceKm: number } | null {
-  let best: { station: GiosStation; distanceKm: number } | null = null;
-  for (const st of stations) {
-    if (st.lat === null || st.lon === null) continue;
-    const d = distKm(lat, lon, st.lat, st.lon);
-    if (!best || d < best.distanceKm) best = { station: st, distanceKm: d };
-  }
-  return best;
+  return nearestStations(stations, lat, lon, 1)[0] ?? null;
 }
+
+/** Kandydat na stację urzędową z opcjonalną odległością (null dla dopasowania po nazwie). */
+export type StationCandidate = { station: GiosStation; distanceKm: number | null };
+
+/**
+ * Czysta funkcja wyboru stacji: dociąga indeksy KOLEJNYCH kandydatów (≤ limit),
+ * aż któraś ma policzoną kategorię indeksu („Nazwa kategorii indeksu” ≠ null).
+ * fetchIndex wstrzykiwany — testy na fiksie, bez sieci. Zwraca null, gdy żadna
+ * z sprawdzonych stacji nie ma indeksu.
+ */
+export async function pickWithIndex<C extends StationCandidate>(
+  candidates: C[],
+  fetchIndex: (stationId: number) => Promise<Record<string, unknown>>,
+  limit = 3,
+): Promise<(C & { index: Record<string, unknown> }) | null> {
+  let tried = 0;
+  for (const cand of candidates) {
+    if (tried >= limit) break;
+    tried++;
+    const index = await fetchIndex(cand.station.id);
+    if (index['Nazwa kategorii indeksu']) return { ...cand, index };
+  }
+  return null;
+}
+
+/** Alternatywa stacji: wzbogacona o kategorię i odległość — widać, które stacje mają dane. */
+export type AirAlternative = {
+  id: number;
+  name: string;
+  city: string;
+  kategoria: string | null;
+  distanceKm: number | null;
+};
 
 export type AirResult = {
   station: GiosStation;
@@ -385,7 +543,7 @@ export type AirResult = {
   dataZrodlowa: string | null;
   pollutants: AirPollutant[];
   advice: string;
-  alternatives: { id: number; name: string; city: string }[];
+  alternatives: AirAlternative[];
   distanceKm: number | null;
   community: CommunityAir | null;
   airly: AirlyAir | null;
@@ -405,13 +563,15 @@ export function adviceFor(kategoria: string | null): string {
   return KATEGORIA_ADVICE[kategoria] ?? 'Sprawdź szczegóły jakości powietrza na stronie GIOŚ.';
 }
 
-type AqIndexResponse = { AqIndex?: Record<string, unknown> };
-
-/** Surowy obiekt indeksu dla stacji (pusty obiekt przy błędzie/braku indeksu). */
+/**
+ * Surowy obiekt indeksu dla stacji. {} = GIOŚ odpowiada, ale indeksu nie policzyła
+ * (stacje manualne, np. Busko-Zdrój 756). Awaria upstreamu (GiosError po retryach)
+ * PRZELATUJE wyżej — endpoint zwróci 502 zamiast udawać „brak danych”.
+ */
 async function fetchStationIndex(stationId: number): Promise<Record<string, unknown>> {
   const idx = await Effect.runPromise(
     giosJson<{ AqIndex?: Record<string, unknown> }>(`/aqindex/getIndex/${stationId}`),
-  ).catch(() => ({}) as AqIndexResponse);
+  );
   return idx.AqIndex ?? {};
 }
 
@@ -480,10 +640,13 @@ export async function airForLocality(localityRaw: string): Promise<{
   dataZrodlowa: string | null;
   pollutants: AirPollutant[];
   advice: string;
-  alternatives: { id: number; name: string; city: string }[];
+  alternatives: AirAlternative[];
   distanceKm: number | null;
   community: CommunityAir | null;
   airly: AirlyAir | null;
+  sources: AirSources;
+  /** true = oba geokodery padły (stan przejściowy — nie cache'ować) */
+  geoError: boolean;
 }> {
   const locality = normCity(localityRaw);
   const stations = await allStations();
@@ -517,8 +680,20 @@ export async function airForLocality(localityRaw: string): Promise<{
     const st = candidates[0].station;
     refPoint = st.lat !== null && st.lon !== null ? { lat: st.lat, lon: st.lon } : null;
   }
+  // geokodowanie z pamięcią wyniku (obie ścieżki niżej korzystają z JEDNEGO lookupu)
+  // + rozróżnienie „nie znaleziono” od „oba providery padły” (f9). Memo na obiekcie —
+  // TS nie śledzi przypisań do zmiennych z wnętrza closures.
+  const geoMemo: { outcome: { point: GeoResult | null; error: boolean } | null } = { outcome: null };
+  const geoOnce = async (): Promise<{ point: GeoResult | null; error: boolean }> => {
+    if (geoMemo.outcome) return geoMemo.outcome;
+    const r = await geocodeBatchWithStatus([localityRaw]).catch(
+      (): { results: (GeoResult | null)[]; error: boolean } => ({ results: [null], error: true }),
+    );
+    geoMemo.outcome = { point: r.results[0] ?? null, error: r.error };
+    return geoMemo.outcome;
+  };
   if (candidates.length === 0) {
-    const [geo] = await geocodeBatch([localityRaw]).catch((): [null] => [null]);
+    const { point: geo } = await geoOnce();
     if (geo) {
       refPoint = { lat: geo.lat, lon: geo.lon };
       const near = nearestStation(stations, geo.lat, geo.lon);
@@ -531,24 +706,59 @@ export async function airForLocality(localityRaw: string): Promise<{
   }
   // punkt odniesienia dla czujników: koordynaty stacji albo geokodowana miejscowość
   if (!refPoint) {
-    const [geo] = await geocodeBatch([localityRaw]).catch((): [null] => [null]);
+    const { point: geo } = await geoOnce();
     if (geo) refPoint = { lat: geo.lat, lon: geo.lon };
   }
 
   // pierwsza stacja bez indeksu nie blokuje — próbujemy kolejnych kandydatów,
-  // aż znajdziemy stację z policzoną kategorią indeksu
-  let station: GiosStation | null = null;
-  let distanceKm: number | null = null;
-  let a: Record<string, unknown> = {};
-  for (const cand of candidates) {
-    station = cand.station;
-    distanceKm = cand.distanceKm;
-    a = await fetchStationIndex(cand.station.id);
-    if (a['Nazwa kategorii indeksu']) break;
+  // aż znajdziemy stację z policzoną kategorią indeksu. Wyniki sondowań idą do
+  // `probed`, żeby alternatives pokazały, które pobliskie stacje MAJĄ dane.
+  const probed = new Map<number, Record<string, unknown>>();
+  const fetchIndexProbed = (id: number): Promise<Record<string, unknown>> =>
+    fetchStationIndex(id).then((idx) => {
+      probed.set(id, idx);
+      return idx;
+    });
+  const picked = await pickWithIndex(candidates, fetchIndexProbed);
+  let station: GiosStation | null = picked?.station ?? candidates[0]?.station ?? null;
+  let distanceKm: number | null = picked?.distanceKm ?? candidates[0]?.distanceKm ?? null;
+  let a: Record<string, unknown> = picked?.index ?? {};
+
+  const { community, airly, probed: probeStatus } = await sourcesNear(refPoint);
+  const sources: AirSources = { gios: 'ok', ...probeStatus };
+
+  // fallback: wybrana stacja bez policzonego indeksu (stacja manualna, jak
+  // Busko-Zdrój 756 — jedyna w mieście) i czujniki obywatelskie/Airly też nie
+  // znają kategorii — dociągnij najbliższe stacje GIOŚ z żywym indeksem
+  // (≤3 próby, ≤80 km) i podmień station/distanceKm
+  if (!picked && station !== null && !community?.kategoria && !airly?.kategoria && refPoint) {
+    const tried = new Set(candidates.map((c) => c.station.id));
+    const nearby = nearestStations(stations, refPoint.lat, refPoint.lon)
+      .filter((c) => !tried.has(c.station.id) && c.distanceKm <= 80)
+      .slice(0, 3);
+    // tolerancyjnie: przejściowa awaria GIOŚ przy sondowaniu sąsiadów NIE odrzuca
+    // złożonej odpowiedzi ({} = „brak indeksu”, próbuj kolejnych); strict 502
+    // zostaje dla pierwotnej pętli kandydatów wyżej
+    const fb = await pickWithIndex(nearby, (id) => fetchIndexProbed(id).catch(() => ({})));
+    if (fb) {
+      station = fb.station;
+      distanceKm = Math.round(fb.distanceKm * 10) / 10;
+      a = fb.index;
+      // wzbogacenie alternatives: scan przerwał się na pierwszej stacji z indeksem,
+      // więc dociągnij POZOSTAŁE pobliskie (≤2 dodatkowe wywołania), by alternatives
+      // pokazały, które jeszcze mają żywe dane. Rzadka ścieżka (tylko fallback),
+      // koszt kurtowany cache'em (30 min / 3 min negativeTtl); pojedyncza awaria
+      // przy sondowaniu nie psuje dobrej odpowiedzi — po prostu pomijamy stację.
+      for (const cand of nearby) {
+        if (probed.has(cand.station.id)) continue;
+        await fetchIndexProbed(cand.station.id).catch(() => undefined);
+      }
+    }
   }
 
-  const { community, airly } = await sourcesNear(refPoint);
-
+  // geokoder padł po obu providerach — dopiero to wyjaśnia, czemu nie ma stacji
+  // ani współrzędnych (małe wsie nieznane Nominatimowi to MISS, nie error)
+  const geoError = geoMemo.outcome?.error === true;
   if (!station) {
     // brak stacji urzędowej — pokazujemy choćby czujniki obywatelskie/Airly
     const kat = community?.kategoria ?? airly?.kategoria ?? null;
@@ -561,23 +771,48 @@ export async function airForLocality(localityRaw: string): Promise<{
       dataObliczen: null,
       dataZrodlowa: null,
       pollutants: [],
-      advice: kat
-        ? adviceFor(kat)
-        : `Nie znaleziono stacji GIOŚ dla „${localityRaw}" — wybierz pobliskie miasto.`,
+      advice: geoError
+        ? 'Geokodowanie chwilowo niedostępne — spróbuj za chwilę.'
+        : kat
+          ? adviceFor(kat)
+          : `Nie znaleziono stacji GIOŚ dla „${localityRaw}" — wybierz pobliskie miasto.`,
       alternatives: [],
       distanceKm: null,
       community,
       airly,
+      sources,
+      geoError,
     };
   }
 
   const { kategoria, wartosc, dataObliczen, dataZrodlowa, pollutants } = parseAqIndex(a);
 
-  // pozostałe dopasowane stacje (bez wybranej) — jedna lista dla matches i alternatives
-  const others = matches
-    .filter((m) => m.id !== station!.id)
+  // alternatives wzbogacone: najpierw najbliższe stacje z policzonym indeksem
+  // (znane z sondowań TEGO żądania — zero dodatkowych wywołań GIOŚ), potem
+  // pozostałe dopasowane; kategoria + odległość pokazują, które stacje mają dane
+  const distOf = (st: GiosStation): number | null =>
+    refPoint && st.lat !== null && st.lon !== null
+      ? Math.round(distKm(refPoint.lat, refPoint.lon, st.lat, st.lon) * 10) / 10
+      : null;
+  const withIndex: AirAlternative[] = [];
+  for (const [id, idx] of probed) {
+    if (id === station!.id || !idx['Nazwa kategorii indeksu']) continue;
+    const st = stations.find((s) => s.id === id);
+    if (!st) continue;
+    withIndex.push({
+      id: st.id,
+      name: st.name,
+      city: st.city,
+      kategoria: parseAqIndex(idx).kategoria,
+      distanceKm: distOf(st),
+    });
+  }
+  withIndex.sort((x, y) => (x.distanceKm ?? Infinity) - (y.distanceKm ?? Infinity));
+  const others: AirAlternative[] = matches
+    .filter((m) => m.id !== station!.id && !withIndex.some((w) => w.id === m.id))
     .slice(0, 4)
-    .map((m) => ({ id: m.id, name: m.name, city: m.city }));
+    .map((m) => ({ id: m.id, name: m.name, city: m.city, kategoria: null, distanceKm: distOf(m) }));
+  const alternatives = [...withIndex, ...others].slice(0, 3);
 
   // porada z pierwszego źródła, które zna kategorię — stacja urzędowa może
   // nie mieć policzonego indeksu, a czujniki obywatelskie mają dane
@@ -593,9 +828,11 @@ export async function airForLocality(localityRaw: string): Promise<{
     dataZrodlowa,
     pollutants,
     advice: adviceFor(effectiveKategoria),
-    alternatives: others,
+    alternatives,
     distanceKm,
     community,
     airly,
+    sources,
+    geoError,
   };
 }
